@@ -1,0 +1,17 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g1" x1="16" y1="12" x2="112" y2="114" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6B00"/>
+      <stop offset="1" stop-color="#FFD600"/>
+    </linearGradient>
+    <linearGradient id="g2" x1="22" y1="28" x2="108" y2="104" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#D7FCFF"/>
+    </linearGradient>
+  </defs>
+  <rect x="0.5" y="0.5" width="127" height="127" rx="26" fill="#090909" stroke="#2A2A2A"/>
+  <path d="M18 102C30 102 30 74 42 74C54 74 54 112 66 112C78 112 78 62 90 62C102 62 102 102 114 102" stroke="url(#g1)" stroke-width="8" stroke-linecap="round"/>
+  <path d="M20 18L108 18" stroke="#00E5FF" stroke-opacity="0.45" stroke-width="2.2" stroke-linecap="round"/>
+  <text x="64" y="56" text-anchor="middle" font-family="Poppins, Segoe UI, Arial, sans-serif" font-size="34" font-weight="800" letter-spacing="3" fill="url(#g2)">AMT</text>
+  <text x="64" y="89" text-anchor="middle" font-family="Poppins, Segoe UI, Arial, sans-serif" font-size="19" font-weight="800" letter-spacing="2.2" fill="#FFD600">DISTRO</text>
+</svg>

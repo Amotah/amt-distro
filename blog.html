@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SoundFlow Blog | Music Distribution Platform</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <header class="main-header">
+    <div class="header-inner container">
+      <div class="logo-area">
+        <div class="logo-icon">
+          <svg class="logo-wave" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M2 12C2 12 4 8 6 8C8 8 8 12 10 12C12 12 12 6 14 6C16 6 16 14 18 14C20 14 20 10 22 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M2 16C2 16 4 12 6 12C8 12 8 16 10 16C12 16 12 10 14 10C16 10 16 18 18 18C20 18 20 14 22 14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+          </svg>
+        </div>
+        <span class="logo-title">AMT MUSIK</span>
+      </div>
+
+      <nav class="desktop-nav">
+        <a href="index.html">Home</a>
+        <a href="#features">Features</a>
+        <a href="#how-it-works">How It Works</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#blog" class="active">Blog</a>
+      </nav>
+
+      <div class="auth-actions">
+        <a class="btn btn-ghost" href="#login">Sign In</a>
+        <a class="btn btn-primary" href="#get-started">Get Started</a>
+      </div>
+
+      <button class="mobile-menu-btn" id="mobileMenuToggle" aria-label="Toggle menu">☰</button>
+    </div>
+
+    <div id="mobileMenu" class="mobile-nav">
+      <a href="index.html">Home</a>
+      <a href="#features">Features</a>
+      <a href="#how-it-works">How It Works</a>
+      <a href="#pricing">Pricing</a>
+      <a href="#blog" class="active">Blog</a>
+      <a class="btn btn-ghost" href="#login">Sign In</a>
+      <a class="btn btn-primary" href="#get-started">Get Started</a>
+    </div>
+  </header>
+
+  <main class="bg-page min-h-screen">
+    <section class="py-20 px-4 sm:px-6 lg:px-8" style="background: var(--background); color: var(--foreground);">
+      <div class="container">
+        <div class="text-center mb-12">
+          <h1 class="text-5xl mb-4" style="color: var(--primary);">AMT MUSIK Blog</h1>
+          <p class="text-xl" style="color: var(--muted-foreground); max-width: 48rem; margin: 0 auto;">Tips, insights, and stories from the world of music distribution</p>
+        </div>
+
+        <!-- Top Ad Banner -->
+        <div class="ad-space" style="margin: 2rem auto 2.5rem; max-width: 970px; min-height: 90px; display: flex; align-items: center; justify-content: center; background: #161616; border-radius: 1rem; border: 2px dashed #FFD600;">
+          <!-- Google AdSense or other ad code here -->
+          <span style="color:#FFD600; font-size:1.1rem;">Ad Space (970x90)</span>
+        </div>
+
+        <div class="mb-12">
+          <div class="max-w-2xl mx-auto mb-8 relative">
+            <span style="position:absolute; left: 16px; top: 50%; transform: translateY(-50%); color:#b3b3b3;">🔍</span>
+            <input id="searchInput" type="search" placeholder="Search articles..." class="input" style="padding-left: 40px; background: #161616; color: #fff; border: 1.5px solid #FF6B00;" />
+          </div>
+
+          <div id="categoryButtons" class="flex flex-wrap justify-center gap-3"></div>
+        </div>
+
+        <!-- Featured Post and Blog Grid -->
+        <div id="featuredPost"></div>
+        <div id="blogGrid" class="card-grid"></div>
+
+        <div id="noPosts" class="text-center py-12" style="display:none;">
+          <p class="text-text-secondary mb-4">No articles found matching your criteria.</p>
+          <button class="button outline" id="clearFiltersBtn">Clear Filters</button>
+        </div>
+
+        <!-- Inline Ad -->
+        <div class="ad-space" style="margin: 3rem auto; max-width: 728px; min-height: 90px; display: flex; align-items: center; justify-content: center; background: #161616; border-radius: 1rem; border: 2px dashed #FF6B00;">
+          <!-- Google AdSense or other ad code here -->
+          <span style="color:#FF6B00; font-size:1.1rem;">Ad Space (728x90)</span>
+        </div>
+
+        <section class="card" style="margin-top: 4rem; background: linear-gradient(90deg, #793ae1, #ff00d2); color:#fff; text-align:center;">
+          <h2 class="text-3xl mb-4">Subscribe to Our Newsletter</h2>
+          <p class="mb-8 max-w-2xl mx-auto">Get the latest tips, insights, and industry news delivered to your inbox every week</p>
+          <div class="max-w-md mx-auto flex gap-3" style="flex-wrap:wrap; justify-content:center;">
+            <input id="emailSub" type="email" placeholder="Enter your email" class="input" style="width:calc(100% - 120px); min-width:220px; color:#000; background:#fff;" />
+            <button class="button secondary" style="min-width:120px;">Subscribe</button>
+          </div>
+        </section>
+
+        <!-- Bottom Ad Banner -->
+        <div class="ad-space" style="margin: 3rem auto 0; max-width: 970px; min-height: 90px; display: flex; align-items: center; justify-content: center; background: #161616; border-radius: 1rem; border: 2px dashed #FFD600;">
+          <!-- Google AdSense or other ad code here -->
+          <span style="color:#FFD600; font-size:1.1rem;">Ad Space (970x90)</span>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-content">
+        <div class="footer-section">
+          <div class="footer-logo">
+            <div class="logo-icon">
+              <svg class="logo-wave" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 12C2 12 4 8 6 8C8 8 8 12 10 12C12 12 12 6 14 6C16 6 16 14 18 14C20 14 20 10 22 10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" />
+                <path d="M2 16C2 16 4 12 6 12C8 12 8 16 10 16C12 16 12 10 14 10C16 10 16 18 18 18C20 18 20 14 22 14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" opacity="0.5" />
+              </svg>
+            </div>
+            <span class="logo-title">AMT MUSIK</span>
+          </div>
+          <p class="footer-description">Distribute your music to every major platform worldwide. Keep 100% of your rights and royalties.</p>
+          <div class="social-links">
+            <a href="#" class="social-link">📘</a>
+            <a href="#" class="social-link">🐦</a>
+            <a href="#" class="social-link">📷</a>
+            <a href="#" class="social-link">▶️</a>
+          </div>
+        </div>
+
+        <div class="footer-section">
+          <h4>Platform</h4>
+          <ul>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+            <li><a href="#how-it-works">How It Works</a></li>
+            <li><a href="#upload">Upload Music</a></li>
+            <li><a href="#dashboard">Dashboard</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="#about">About Us</a></li>
+            <li><a href="#careers">Careers</a></li>
+            <li><a href="#press">Press</a></li>
+            <li><a href="#contact">Contact</a></li>
+            <li><a href="blog.html">Blog</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="#help">Help Center</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#api">API Docs</a></li>
+            <li><a href="#status">System Status</a></li>
+            <li><a href="#feedback">Feedback</a></li>
+          </ul>
+        </div>
+
+        <div class="footer-section">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="#privacy">Privacy Policy</a></li>
+            <li><a href="#terms">Terms of Service</a></li>
+            <li><a href="#cookies">Cookie Policy</a></li>
+            <li><a href="#dmca">DMCA</a></li>
+            <li><a href="#gdpr">GDPR</a></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="footer-bottom">
+        <p>&copy; 2026 AMT MUSIK. All rights reserved.</p>
+        <div class="footer-badges">
+          <span class="badge">🔒 SSL Secured</span>
+          <span class="badge">🌍 Global Distribution</span>
+          <span class="badge">💰 100% Royalties</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="js/script.js"></script>
+  <script src="js/blog.js"></script>
+</body>
+</html>

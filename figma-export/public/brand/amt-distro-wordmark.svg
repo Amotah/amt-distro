@@ -1,0 +1,15 @@
+<svg width="592" height="120" viewBox="0 0 592 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="amtIcon" x1="20" y1="20" x2="82" y2="97" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FF6B00"/>
+      <stop offset="1" stop-color="#FFD600"/>
+    </linearGradient>
+    <linearGradient id="amtText" x1="98" y1="28" x2="560" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F9FCFF"/>
+      <stop offset="1" stop-color="#B8F6FF"/>
+    </linearGradient>
+  </defs>
+  <path d="M46 23C33.2975 23 23 33.2975 23 46V74C23 86.7025 33.2975 97 46 97H56" stroke="url(#amtIcon)" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M56 23C68.7025 23 79 33.2975 79 46V74C79 86.7025 68.7025 97 56 97H46" stroke="url(#amtIcon)" stroke-width="3.4" stroke-linecap="round"/>
+  <text x="98" y="74" font-family="Poppins, Segoe UI, Arial, sans-serif" font-size="43" font-weight="700" letter-spacing="0.5" fill="url(#amtText)">AMTDISTRO</text>
+</svg>
