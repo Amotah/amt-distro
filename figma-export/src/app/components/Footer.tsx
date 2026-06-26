@@ -24,6 +24,7 @@ export function Footer() {
             <h4 className="mb-4 text-white font-bold">{t('footer.product', 'Product')}</h4>
             <ul className="space-y-2 text-[#B3B3B3]">
               <li><a href="/#features" className="hover:text-[#FF6B00] transition-colors">{t('footer.features', 'Features')}</a></li>
+              <li><a href="/listen" className="hover:text-[#FF6B00] transition-colors">Listener App</a></li>
               <li><a href="/#pricing" className="hover:text-[#FF6B00] transition-colors">{t('footer.pricing', 'Pricing')}</a></li>
               <li><a href="/#how-it-works" className="hover:text-[#FF6B00] transition-colors">{t('footer.howItWorks', 'How It Works')}</a></li>
               <li><a href="/#faq" className="hover:text-[#FF6B00] transition-colors">{t('footer.faq', 'FAQ')}</a></li>

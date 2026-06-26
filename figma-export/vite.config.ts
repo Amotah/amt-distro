@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import path from 'path'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 
 export default defineConfig({
   plugins: [
@@ -9,6 +10,44 @@ export default defineConfig({
     // Tailwind is not being actively used – do not remove them
     react(),
     tailwindcss(),
+    VitePWA({
+      registerType: 'autoUpdate',
+      includeAssets: ['brand/amt-distro-logo.svg', 'brand/amt-distro-wordmark.svg'],
+      manifest: {
+        name: 'AMTDISTRO Listener',
+        short_name: 'AMT Listen',
+        description: 'Listener-facing AMTDISTRO streaming, discovery, and rewards web app.',
+        theme_color: '#0A0A0A',
+        background_color: '#0A0A0A',
+        display: 'standalone',
+        start_url: '/listen',
+        scope: '/',
+        icons: [
+          {
+            src: '/brand/amt-distro-logo.svg',
+            sizes: '512x512',
+            type: 'image/svg+xml',
+            purpose: 'any maskable',
+          },
+        ],
+        shortcuts: [
+          {
+            name: 'Discover music',
+            short_name: 'Discover',
+            url: '/listen',
+          },
+          {
+            name: 'Artist dashboard',
+            short_name: 'Dashboard',
+            url: '/dashboard',
+          },
+        ],
+      },
+      workbox: {
+        navigateFallback: '/index.html',
+        globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg}'],
+      },
+    }),
   ],
   resolve: {
     alias: {
