@@ -1,3 +1,4 @@
+-- Monetary values in listener monetization tables are stored in Nigerian Naira.
 CREATE TABLE IF NOT EXISTS platform_monetization_rules (
   id TEXT PRIMARY KEY DEFAULT 'default',
   min_stream_seconds INTEGER NOT NULL DEFAULT 30,

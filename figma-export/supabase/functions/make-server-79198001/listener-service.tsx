@@ -179,6 +179,9 @@ const DEFAULT_RULES: MonetizationRuleRow = {
   platform_fee_percent: 15,
 };
 
+const MIN_EVENTS_FOR_FRAUD_CHECK = 25;
+const FRAUD_CHECK_INTERVAL = 10;
+
 function slugify(value: string) {
   return value
     .toLowerCase()
@@ -431,7 +434,7 @@ async function maybeTriggerFraudReview(trackId: string) {
     .in('event_type', ['play_complete', 'download'])
     .gte('created_at', startOfDay.toISOString());
 
-  if (error || !data || data.length < 25 || data.length % 10 !== 0) {
+  if (error || !data || data.length < MIN_EVENTS_FOR_FRAUD_CHECK || data.length % FRAUD_CHECK_INTERVAL !== 0) {
     return;
   }
 
@@ -805,8 +808,8 @@ export async function getListenerSummary(listenerUserId: string): Promise<Listen
       availableBalance: Number(wallet.available_balance || 0),
       pendingBalance: Number(wallet.pending_balance || 0),
       lifetimeEarned: Number(wallet.lifetime_earned || 0),
-      qualifiedStreams: Number(wallet.lifetime_qualified_streams || playbackEvents.filter((row) => row.is_qualified && row.event_type !== 'download').length),
-      qualifiedDownloads: Number(wallet.lifetime_downloads || playbackEvents.filter((row) => row.is_qualified && row.event_type === 'download').length),
+      qualifiedStreams: Number(wallet.lifetime_qualified_streams ?? playbackEvents.filter((row) => row.is_qualified && row.event_type !== 'download').length),
+      qualifiedDownloads: Number(wallet.lifetime_downloads ?? playbackEvents.filter((row) => row.is_qualified && row.event_type === 'download').length),
     },
     recentDownloads,
     savedTrackPreview,

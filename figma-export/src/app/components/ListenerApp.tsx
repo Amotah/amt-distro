@@ -146,7 +146,9 @@ export function ListenerApp() {
 
     const listenedSeconds = Math.max(0, audio.currentTime || 0);
     if (listenedSeconds > 0 && listenedSeconds < track.duration) {
-      await recordListenerTrackEvent(track, 'play_progress', listenedSeconds, track.duration > 0 ? listenedSeconds / track.duration : 0).catch(() => undefined);
+      await recordListenerTrackEvent(track, 'play_progress', listenedSeconds, track.duration > 0 ? listenedSeconds / track.duration : 0).catch((error) => {
+        console.debug('Listener progress tracking failed:', error);
+      });
     }
 
     audio.pause();
