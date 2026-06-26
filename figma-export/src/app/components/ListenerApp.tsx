@@ -116,7 +116,7 @@ export function ListenerApp() {
     );
   }, [catalog, search]);
 
-  const handleEvent = async (track: ListenerCatalogTrack, eventType: 'play_start' | 'play_progress' | 'play_complete' | 'download' | 'save' | 'follow' | 'share', listenedSeconds = 0, completionRate = 0) => {
+  const recordListenerTrackEvent = async (track: ListenerCatalogTrack, eventType: 'play_start' | 'play_progress' | 'play_complete' | 'download' | 'save' | 'follow' | 'share', listenedSeconds = 0, completionRate = 0) => {
     const response = await recordListenerEvent({
       trackId: track.id,
       releaseId: track.releaseId,
@@ -146,7 +146,7 @@ export function ListenerApp() {
 
     const listenedSeconds = Math.max(0, audio.currentTime || 0);
     if (listenedSeconds > 0 && listenedSeconds < track.duration) {
-      await handleEvent(track, 'play_progress', listenedSeconds, track.duration > 0 ? listenedSeconds / track.duration : 0).catch(() => undefined);
+      await recordListenerTrackEvent(track, 'play_progress', listenedSeconds, track.duration > 0 ? listenedSeconds / track.duration : 0).catch(() => undefined);
     }
 
     audio.pause();
@@ -168,11 +168,15 @@ export function ListenerApp() {
     audioRef.current = nextAudio;
     setActiveTrack(track);
     setIsPlaying(true);
-    await handleEvent(track, 'play_start').catch(() => undefined);
+    await recordListenerTrackEvent(track, 'play_start').catch(() => undefined);
 
     nextAudio.onended = () => {
       setIsPlaying(false);
-      void handleEvent(track, 'play_complete', track.duration, 1).then(() => loadData()).catch(() => undefined);
+      void recordListenerTrackEvent(track, 'play_complete', track.duration, 1)
+        .then(() => loadData())
+        .catch((error) => {
+          toast.error(error instanceof Error ? error.message : 'Playback finished but completion tracking failed.');
+        });
     };
     nextAudio.onpause = () => {
       setIsPlaying(false);
@@ -185,14 +189,14 @@ export function ListenerApp() {
   };
 
   const handleDownload = async (track: ListenerCatalogTrack) => {
-    await handleEvent(track, 'download').then(() => loadData()).catch((error) => {
+    await recordListenerTrackEvent(track, 'download').then(() => loadData()).catch((error) => {
       toast.error(error instanceof Error ? error.message : 'Download tracking failed.');
     });
     window.open(track.audioUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleSave = async (track: ListenerCatalogTrack) => {
-    await handleEvent(track, 'save').then(() => {
+    await recordListenerTrackEvent(track, 'save').then(() => {
       toast.success('Added to your listener library.');
       void loadData();
     }).catch((error) => {
@@ -201,7 +205,7 @@ export function ListenerApp() {
   };
 
   const handleFollow = async (track: ListenerCatalogTrack) => {
-    await handleEvent(track, 'follow').then(() => {
+    await recordListenerTrackEvent(track, 'follow').then(() => {
       toast.success(`Following ${track.artistName}`);
       void loadData();
     }).catch((error) => {
@@ -221,7 +225,7 @@ export function ListenerApp() {
       await navigator.clipboard.writeText(shareUrl).catch(() => undefined);
       toast.success('Listener app link copied.');
     }
-    await handleEvent(track, 'share').catch(() => undefined);
+    await recordListenerTrackEvent(track, 'share').catch(() => undefined);
   };
 
   if (loading && !catalog) {

@@ -540,7 +540,10 @@ export async function getListenerCatalog(): Promise<ListenerCatalogResponse> {
       acc[slug] = current;
       return acc;
     }, {}),
-  ).sort((a, b) => b.totalStreams - a.totalStreams || b.releaseCount - a.releaseCount);
+  ).sort((a, b) => {
+    const streamDelta = b.totalStreams - a.totalStreams;
+    return streamDelta !== 0 ? streamDelta : b.releaseCount - a.releaseCount;
+  });
 
   const genreHighlights = Object.entries(
     featuredReleases.reduce<Record<string, number>>((acc, release) => {
