@@ -21,6 +21,7 @@ import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
 import * as smartLinksService from "./smart-links-service.tsx";
+import * as listenerService from "./listener-service.tsx";
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -142,6 +143,16 @@ async function verifyAuth(c: any, next: any) {
   c.set('userId', user.id);
   c.set('userEmail', user.email);
   await next();
+}
+
+async function getOptionalAuthUserId(c: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return null;
+  }
+
+  const { data: { user } } = await supabase.auth.getUser(accessToken);
+  return user?.id || null;
 }
 
 async function syncAuthUserMetadata(userId: string, updates: {
@@ -742,6 +753,70 @@ app.get('/make-server-79198001/analytics/catalog-performance', verifyAuth, async
   } catch (error) {
     console.error('Error loading analytics catalog performance:', error);
     return c.json({ error: `Failed to load analytics catalog performance: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/listener/catalog', async (c) => {
+  try {
+    const catalog = await listenerService.getListenerCatalog();
+    return c.json(catalog);
+  } catch (error) {
+    console.error('Error loading listener catalog:', error);
+    return c.json({ error: `Failed to load listener catalog: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.post('/make-server-79198001/listener/events', async (c) => {
+  try {
+    const listenerUserId = await getOptionalAuthUserId(c);
+    const body = await c.req.json();
+
+    if (typeof body.trackId !== 'string' || typeof body.releaseId !== 'string' || typeof body.eventType !== 'string' || typeof body.deviceFingerprint !== 'string') {
+      return c.json({ error: 'trackId, releaseId, eventType, and deviceFingerprint are required.' }, 400);
+    }
+
+    const result = await listenerService.recordListenerEvent({
+      listenerUserId,
+      trackId: body.trackId,
+      releaseId: body.releaseId,
+      eventType: body.eventType,
+      listenedSeconds: Number(body.listenedSeconds || 0),
+      completionRate: Number(body.completionRate || 0),
+      sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+      deviceFingerprint: body.deviceFingerprint,
+      sourcePlatform: typeof body.sourcePlatform === 'string' ? body.sourcePlatform : 'web',
+      country: typeof body.country === 'string' ? body.country : undefined,
+      deviceType: typeof body.deviceType === 'string' ? body.deviceType : undefined,
+      artistName: typeof body.artistName === 'string' ? body.artistName : undefined,
+      metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error recording listener event:', error);
+    return c.json({ error: `Failed to record listener event: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/listener/summary', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const summary = await listenerService.getListenerSummary(userId);
+    return c.json(summary);
+  } catch (error) {
+    console.error('Error loading listener summary:', error);
+    return c.json({ error: `Failed to load listener summary: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/listener/artist-monetization', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const summary = await listenerService.getArtistMonetizationSummary(userId);
+    return c.json({ summary });
+  } catch (error) {
+    console.error('Error loading listener monetization summary:', error);
+    return c.json({ error: `Failed to load listener monetization summary: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 

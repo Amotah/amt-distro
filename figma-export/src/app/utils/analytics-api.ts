@@ -76,6 +76,24 @@ export interface AnalyticsCatalogPerformance {
   topReleases: AnalyticsTopRelease[];
 }
 
+export interface ArtistListenerMonetizationSummary {
+  qualifiedStreams: number;
+  qualifiedDownloads: number;
+  grossRevenue: number;
+  netArtistRevenue: number;
+  listenerRewardsFunded: number;
+  platformFees: number;
+  recentEntries: Array<{
+    id: string;
+    trackId: string;
+    title: string;
+    artistName: string;
+    revenueType: string;
+    netArtistAmount: number;
+    createdAt: string;
+  }>;
+}
+
 function getUserAuthToken(): string {
   const token = getStoredAccessToken();
   if (!token) {
@@ -111,4 +129,9 @@ export async function getAnalyticsCatalogPerformance(range: string) {
   const query = new URLSearchParams({ range });
   const result = await analyticsApiCall<{ performance: AnalyticsCatalogPerformance }>(`/analytics/catalog-performance?${query.toString()}`);
   return result.performance;
+}
+
+export async function getArtistListenerMonetizationSummary() {
+  const result = await analyticsApiCall<{ summary: ArtistListenerMonetizationSummary }>('/listener/artist-monetization');
+  return result.summary;
 }

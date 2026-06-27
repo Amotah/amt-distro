@@ -42,8 +42,9 @@ const Careers = lazy(() => import('./components/Careers').then((module) => ({ de
 const PricingPage = lazy(() => import('./components/PricingPage').then((module) => ({ default: module.PricingPage })));
 const ForgotPassword = lazy(() => import('./components/ForgotPassword').then((module) => ({ default: module.ForgotPassword })));
 const ResetPassword = lazy(() => import('./components/ResetPassword').then((module) => ({ default: module.ResetPassword })));
+const ListenerApp = lazy(() => import('./components/ListenerApp').then((module) => ({ default: module.ListenerApp })));
 
-type View = 'landing' | 'get-started' | 'login' | 'forgot-password' | 'reset-password' | 'payment' | 'payment-success' | 'payment-failed' | 'payment-rejected' | 'who-we-are' | 'our-partners' | 'ceo-message' | 'technology' | 'blog' | 'marketing-solutions' | 'video-distribution' | 'rights-management' | 'royalty-advances' | 'promotion' | 'pricing' | 'fix-admin' | 'free-plan-details' | 'paid-plan-details' | 'partner-plan-details' | 'terms-conditions' | 'privacy-policy' | 'cookies-policy' | 'contact' | 'careers';
+type View = 'landing' | 'get-started' | 'login' | 'forgot-password' | 'reset-password' | 'payment' | 'payment-success' | 'payment-failed' | 'payment-rejected' | 'who-we-are' | 'our-partners' | 'ceo-message' | 'technology' | 'blog' | 'marketing-solutions' | 'video-distribution' | 'rights-management' | 'royalty-advances' | 'promotion' | 'pricing' | 'listener-app' | 'fix-admin' | 'free-plan-details' | 'paid-plan-details' | 'partner-plan-details' | 'terms-conditions' | 'privacy-policy' | 'cookies-policy' | 'contact' | 'careers';
 
 const PUBLIC_VIEW_PATHS: Record<View, string> = {
   landing: '/',
@@ -65,6 +66,7 @@ const PUBLIC_VIEW_PATHS: Record<View, string> = {
   'royalty-advances': '/royalty-advances',
   promotion: '/promotion',
   pricing: '/pricing',
+  'listener-app': '/listen',
   blog: '/blog',
   'fix-admin': '/fix-admin',
   'free-plan-details': '/plans/free',
@@ -711,7 +713,8 @@ export default function App() {
         {currentView === 'rights-management' && withPublicSuspense(<RightsManagement />)}
         {currentView === 'royalty-advances' && withPublicSuspense(<RoyaltyAdvances />)}
         {currentView === 'promotion' && withPublicSuspense(<Promotion />)}
-          {currentView === 'pricing' && withPublicSuspense(<PricingPage onSelectPlan={handleSelectPublicPlan} />)}
+        {currentView === 'pricing' && withPublicSuspense(<PricingPage onSelectPlan={handleSelectPublicPlan} />)}
+        {currentView === 'listener-app' && withPublicSuspense(<ListenerApp />)}
         {currentView === 'fix-admin' && withPublicSuspense(<FixAdmin />)}
         {currentView === 'free-plan-details' && withPublicSuspense(<FreePlanDetails />)}
         {currentView === 'paid-plan-details' && withPublicSuspense(<PaidPlanDetails />)}
