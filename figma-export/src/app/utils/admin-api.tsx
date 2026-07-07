@@ -3523,3 +3523,39 @@ export async function submitTrainingFeedback(enrollmentId: string, data: {
   });
   return result.enrollment;
 }
+
+// ==================== ADMIN STAFF PORTAL MANAGEMENT ====================
+
+export async function getAdminLeaveApplications(status?: string): Promise<LeaveApplication[]> {
+  const query = status ? `?status=${status}` : '';
+  const result = await apiCall<{ applications: LeaveApplication[] }>(`/admin/staff-portal/leave/applications${query}`);
+  return result.applications;
+}
+
+export async function approveLeaveApplication(id: string): Promise<LeaveApplication> {
+  const result = await apiCall<{ application: LeaveApplication }>(`/admin/staff-portal/leave/applications/${id}/approve`, {
+    method: 'POST',
+  });
+  return result.application;
+}
+
+export async function rejectLeaveApplication(id: string, reason?: string): Promise<LeaveApplication> {
+  const result = await apiCall<{ application: LeaveApplication }>(`/admin/staff-portal/leave/applications/${id}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+  return result.application;
+}
+
+export async function getAdminTrainings(): Promise<Training[]> {
+  const result = await apiCall<{ trainings: Training[] }>('/admin/staff-portal/trainings');
+  return result.trainings;
+}
+
+export async function createTraining(data: Partial<Training>): Promise<Training> {
+  const result = await apiCall<{ training: Training }>('/admin/staff-portal/trainings', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.training;
+}

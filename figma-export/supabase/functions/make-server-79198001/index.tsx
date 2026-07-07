@@ -4841,39 +4841,6 @@ app.post('/make-server-79198001/admin/accounting/sync-entries', verifyAuth, veri
   }
 });
 
-app.get('/make-server-79198001/admin/accounting/trial-balance', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
-  try {
-    const report = await accountingService.getTrialBalance();
-    return c.json(report);
-  } catch (error) {
-    console.error('Error generating trial balance report:', error);
-    return c.json({ error: `Failed to generate trial balance report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-app.get('/make-server-79198001/admin/accounting/balance-sheet', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
-  try {
-    const date = c.req.query('date');
-    const report = await accountingService.getBalanceSheet(date);
-    return c.json(report);
-  } catch (error) {
-    console.error('Error generating balance sheet report:', error);
-    return c.json({ error: `Failed to generate balance sheet report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
-  try {
-    const startDate = c.req.query('startDate');
-    const endDate = c.req.query('endDate');
-    const report = await accountingService.getIncomeStatement(startDate, endDate);
-    return c.json(report);
-  } catch (error) {
-    console.error('Error generating income statement report:', error);
-    return c.json({ error: `Failed to generate income statement report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // ADMIN SECURITY PANEL ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7679,5 +7646,454 @@ app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, v
     return c.json({ error: 'Failed to fetch income statement' }, 500);
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STAFF PORTAL ENDPOINTS (self-service for authenticated staff users)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── Leave Management ────────────────────────────────────────────────────────
+
+app.post('/make-server-79198001/staff-portal/leave/apply', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+    const { leaveType, startDate, endDate, reason } = body;
+    if (!leaveType || !startDate || !endDate || !reason) {
+      return c.json({ error: 'leaveType, startDate, endDate, and reason are required' }, 400);
+    }
+    const start = new Date(startDate);
+    const end = new Date(endDate);
+    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
+      return c.json({ error: 'Invalid date range' }, 400);
+    }
+    const diffMs = end.getTime() - start.getTime();
+    const numberOfDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
+
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const staffName = member?.fullName || 'Staff Member';
+
+    const id = crypto.randomUUID();
+    const application = {
+      id,
+      staffId: userId,
+      staffName,
+      leaveType,
+      startDate,
+      endDate,
+      numberOfDays,
+      reason: String(reason).slice(0, 500),
+      status: 'pending',
+      appliedAt: new Date().toISOString(),
+      appliedBy: userId,
+    };
+    const existing: any[] = await kv.get('staff-portal:leave:applications') || [];
+    existing.unshift(application);
+    await kv.set('staff-portal:leave:applications', existing.slice(0, 2000));
+    return c.json({ application }, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/staff-portal/leave/applications', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const statusFilter = c.req.query('status');
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    let apps = all.filter((a: any) => a.staffId === userId);
+    if (statusFilter) apps = apps.filter((a: any) => a.status === statusFilter);
+    return c.json({ applications: apps });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/staff-portal/leave/balance', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+
+    const leaveTypes: string[] = ['annual', 'sick', 'parental', 'study'];
+    const typeToBalance: Record<string, number> = {
+      annual: member?.leaveBalance?.annualLeaveDays ?? 0,
+      sick: member?.leaveBalance?.sickLeaveDays ?? 0,
+      parental: member?.leaveBalance?.parentalLeaveDays ?? 0,
+      study: member?.leaveBalance?.studyLeaveDays ?? 0,
+    };
+    const typeToEntitlement: Record<string, number> = {
+      annual: member?.entitlements?.annualLeaveDays ?? 20,
+      sick: member?.entitlements?.sickLeaveDays ?? 10,
+      parental: member?.entitlements?.parentalLeaveDays ?? 90,
+      study: member?.entitlements?.studyLeaveDays ?? 5,
+    };
+
+    const allApps: any[] = await kv.get('staff-portal:leave:applications') || [];
+    const myApps = allApps.filter((a: any) => a.staffId === userId);
+
+    const balances = leaveTypes.map((lt) => {
+      const used = myApps.filter((a: any) => a.leaveType === lt && a.status === 'approved').reduce((s: number, a: any) => s + (a.numberOfDays || 0), 0);
+      const pending = myApps.filter((a: any) => a.leaveType === lt && a.status === 'pending').reduce((s: number, a: any) => s + (a.numberOfDays || 0), 0);
+      const totalAllowed = typeToEntitlement[lt];
+      const available = Math.max(0, (typeToBalance[lt] || totalAllowed) - used - pending);
+      return {
+        staffId: userId,
+        staffName: member?.fullName || 'Staff Member',
+        leaveType: lt,
+        totalAllowed,
+        used,
+        pending,
+        available,
+      };
+    });
+    return c.json({ balances });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/staff-portal/leave/applications/:id/cancel', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const id = c.req.param('id');
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    const idx = all.findIndex((a: any) => a.id === id && a.staffId === userId);
+    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
+    if (all[idx].status !== 'pending') return c.json({ error: 'Only pending applications can be cancelled' }, 400);
+    all[idx] = { ...all[idx], status: 'cancelled', cancelledAt: new Date().toISOString() };
+    await kv.set('staff-portal:leave:applications', all);
+    return c.json({ application: all[idx] });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// ── Staff Portal Management (admin: approve/reject leave) ──────────────────
+
+app.get('/make-server-79198001/admin/staff-portal/leave/applications', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const statusFilter = c.req.query('status');
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    const apps = statusFilter ? all.filter((a: any) => a.status === statusFilter) : all;
+    return c.json({ applications: apps });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/admin/staff-portal/leave/applications/:id/approve', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const adminId = c.get('userId');
+    const id = c.req.param('id');
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    const idx = all.findIndex((a: any) => a.id === id);
+    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
+    all[idx] = { ...all[idx], status: 'approved', approvedBy: adminId, approvedAt: new Date().toISOString() };
+    await kv.set('staff-portal:leave:applications', all);
+    return c.json({ application: all[idx] });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/admin/staff-portal/leave/applications/:id/reject', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const adminId = c.get('userId');
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => ({}));
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    const idx = all.findIndex((a: any) => a.id === id);
+    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
+    all[idx] = { ...all[idx], status: 'rejected', rejectedBy: adminId, rejectedAt: new Date().toISOString(), rejectionReason: body.reason || '' };
+    await kv.set('staff-portal:leave:applications', all);
+    return c.json({ application: all[idx] });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// ── Payslips ─────────────────────────────────────────────────────────────────
+
+app.get('/make-server-79198001/staff-portal/payslips', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const yearQ = c.req.query('year');
+    const monthQ = c.req.query('month');
+
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const staffName = member?.fullName || 'Staff Member';
+    const payrollEmpId = member?.payrollEmployeeId;
+
+    const state = await payrollService.getOverview();
+    const allRuns = (state as any).payrollSummary || [];
+
+    const payslips: any[] = [];
+    for (const run of allRuns) {
+      if (!run?.runId) continue;
+      try {
+        const stubs = await payrollService.getPayStubs(run.runId);
+        for (const stub of stubs) {
+          const isMatch = payrollEmpId ? stub.employeeId === payrollEmpId : stub.employeeName?.toLowerCase() === staffName.toLowerCase() || stub.employeeEmail === (member?.email || '');
+          if (!isMatch) continue;
+          const payDate = stub.period?.payDate || run.payDate || '';
+          if (yearQ && !payDate.startsWith(yearQ)) continue;
+          if (monthQ && !payDate.startsWith(`${yearQ || payDate.slice(0, 4)}-${String(monthQ).padStart(2, '0')}`)) continue;
+          payslips.push({
+            id: `${run.runId}-${stub.employeeId}`,
+            staffId: userId,
+            staffName,
+            payPeriod: `${stub.period?.startDate || ''} – ${stub.period?.endDate || ''}`,
+            payDate,
+            baseSalary: member?.baseSalary || stub.grossPay || 0,
+            allowances: (member?.benefits?.housingAllowance || 0) + (member?.benefits?.transportAllowance || 0) + (member?.benefits?.mealAllowance || 0),
+            deductions: stub.deductions?.total || 0,
+            netSalary: stub.netPay || 0,
+            currency: stub.currency || member?.currency || 'NGN',
+            tax: stub.deductions?.incomeTax || 0,
+            insurancePremium: member?.benefits?.healthInsurance || 0,
+            status: run.status === 'paid' ? 'paid' : run.status === 'draft' ? 'draft' : 'finalized',
+            createdAt: stub.period?.payDate || new Date().toISOString(),
+          });
+        }
+      } catch (_) { /* skip runs with no stubs */ }
+    }
+    payslips.sort((a, b) => b.payDate.localeCompare(a.payDate));
+    return c.json({ payslips });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/staff-portal/payslips/:id', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const [runId, empId] = c.req.param('id').split('-').reduce((acc: string[], part, i, arr) => {
+      if (i === 0) return [part, arr.slice(1).join('-')];
+      return acc;
+    }, []);
+    if (!runId) return c.json({ error: 'Invalid payslip id' }, 400);
+    const stubs = await payrollService.getPayStubs(runId);
+    const stub = stubs.find((s: any) => s.employeeId === empId);
+    if (!stub) return c.json({ error: 'Payslip not found' }, 404);
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+    return c.json({ payslip: { ...stub, staffId: userId, staffName: member?.fullName || stub.employeeName } });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/staff-portal/payslips/:id/download', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const payslipId = c.req.param('id');
+    const [runId, ...empParts] = payslipId.split('-');
+    const empId = empParts.join('-');
+    const stubs = await payrollService.getPayStubs(runId);
+    const stub = stubs.find((s: any) => s.employeeId === empId);
+    if (!stub) return c.json({ error: 'Payslip not found' }, 404);
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const lines = [
+      'PAYSLIP',
+      `Employee: ${member?.fullName || stub.employeeName}`,
+      `Period: ${stub.period?.startDate || ''} to ${stub.period?.endDate || ''}`,
+      `Pay Date: ${stub.period?.payDate || ''}`,
+      '',
+      `Gross Pay: ${stub.grossPay}`,
+      `Deductions: ${stub.deductions?.total || 0}`,
+      `Net Pay: ${stub.netPay}`,
+      `Currency: ${stub.currency || 'NGN'}`,
+    ];
+    return new Response(lines.join('\n'), {
+      headers: {
+        'Content-Type': 'text/plain',
+        'Content-Disposition': `attachment; filename="payslip-${payslipId}.txt"`,
+      },
+    });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// ── Trainings ─────────────────────────────────────────────────────────────────
+
+const TRAININGS_KEY = 'staff-portal:trainings';
+const TRAINING_ENROLLMENTS_KEY = 'staff-portal:training-enrollments';
+
+async function loadTrainings(): Promise<any[]> {
+  return await kv.get(TRAININGS_KEY) || [];
+}
+async function loadEnrollments(): Promise<any[]> {
+  return await kv.get(TRAINING_ENROLLMENTS_KEY) || [];
+}
+
+app.get('/make-server-79198001/staff-portal/trainings/available', verifyAuth, async (c) => {
+  try {
+    const trainings = await loadTrainings();
+    const enrollments = await loadEnrollments();
+    const now = new Date().toISOString();
+    const available = trainings.filter((t: any) => {
+      if (t.status === 'cancelled') return false;
+      if (t.endDate && t.endDate < now.slice(0, 10)) return false;
+      return true;
+    }).map((t: any) => ({
+      ...t,
+      currentParticipants: enrollments.filter((e: any) => e.trainingId === t.id && e.status !== 'cancelled').length,
+    }));
+    return c.json({ trainings: available });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/staff-portal/trainings/my-trainings', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const enrollments = await loadEnrollments();
+    const trainings = await loadTrainings();
+    const myEnrollments = enrollments
+      .filter((e: any) => e.staffId === userId)
+      .map((e: any) => ({
+        ...e,
+        trainingTitle: trainings.find((t: any) => t.id === e.trainingId)?.title || e.trainingTitle,
+      }));
+    return c.json({ trainings: myEnrollments });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const { trainingId } = await c.req.json();
+    if (!trainingId) return c.json({ error: 'trainingId is required' }, 400);
+
+    const trainings = await loadTrainings();
+    const training = trainings.find((t: any) => t.id === trainingId);
+    if (!training) return c.json({ error: 'Training not found' }, 404);
+
+    const enrollments = await loadEnrollments();
+    const already = enrollments.find((e: any) => e.staffId === userId && e.trainingId === trainingId && e.status !== 'cancelled');
+    if (already) return c.json({ error: 'Already enrolled' }, 400);
+
+    const currentCount = enrollments.filter((e: any) => e.trainingId === trainingId && e.status !== 'cancelled').length;
+    if (training.maxParticipants && currentCount >= training.maxParticipants) {
+      return c.json({ error: 'Training is full' }, 400);
+    }
+
+    const staff = await loadHrStaff();
+    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const enrollment = {
+      id: crypto.randomUUID(),
+      staffId: userId,
+      staffName: member?.fullName || 'Staff Member',
+      trainingId,
+      trainingTitle: training.title,
+      enrolledAt: new Date().toISOString(),
+      status: 'enrolled',
+    };
+    enrollments.push(enrollment);
+    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
+    return c.json({ enrollment }, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/staff-portal/trainings/enroll/:id', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const id = c.req.param('id');
+    const enrollments = await loadEnrollments();
+    const idx = enrollments.findIndex((e: any) => e.id === id && e.staffId === userId);
+    if (idx === -1) return c.json({ error: 'Enrollment not found' }, 404);
+    enrollments[idx] = { ...enrollments[idx], status: 'cancelled', cancelledAt: new Date().toISOString() };
+    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/staff-portal/trainings/enroll/:id/feedback', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const id = c.req.param('id');
+    const { score, feedback } = await c.req.json();
+    const enrollments = await loadEnrollments();
+    const idx = enrollments.findIndex((e: any) => e.id === id && e.staffId === userId);
+    if (idx === -1) return c.json({ error: 'Enrollment not found' }, 404);
+    enrollments[idx] = { ...enrollments[idx], score, feedback, status: 'completed', completedAt: new Date().toISOString() };
+    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
+    return c.json({ enrollment: enrollments[idx] });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// ── Admin: manage trainings ───────────────────────────────────────────────────
+
+app.get('/make-server-79198001/admin/staff-portal/trainings', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const trainings = await loadTrainings();
+    const enrollments = await loadEnrollments();
+    return c.json({
+      trainings: trainings.map((t: any) => ({
+        ...t,
+        currentParticipants: enrollments.filter((e: any) => e.trainingId === t.id && e.status !== 'cancelled').length,
+      })),
+    });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.post('/make-server-79198001/admin/staff-portal/trainings', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const body = await c.req.json();
+    if (!body.title || !body.startDate) return c.json({ error: 'title and startDate are required' }, 400);
+    const trainings = await loadTrainings();
+    const training = {
+      id: crypto.randomUUID(),
+      title: body.title,
+      description: body.description || '',
+      category: body.category || 'general',
+      instructor: body.instructor || '',
+      startDate: body.startDate,
+      endDate: body.endDate || body.startDate,
+      duration: body.duration || 1,
+      location: body.location || '',
+      isOnline: body.isOnline ?? false,
+      meetingLink: body.meetingLink || '',
+      maxParticipants: body.maxParticipants || null,
+      currentParticipants: 0,
+      status: 'scheduled',
+      tags: body.tags || [],
+      createdAt: new Date().toISOString(),
+    };
+    trainings.unshift(training);
+    await kv.set(TRAININGS_KEY, trainings);
+    return c.json({ training }, 201);
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/staff-portal/leave/applications', verifyAuth, verifyAdmin, async (c) => {
+  try {
+    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
+    return c.json({ applications: all });
+  } catch (err) {
+    return c.json({ error: (err as Error).message }, 500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// END STAFF PORTAL ENDPOINTS
+// ═══════════════════════════════════════════════════════════════════════════
 
 Deno.serve(app.fetch);

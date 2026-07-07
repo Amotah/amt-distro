@@ -1,33 +1,32 @@
-import React, { useState, useEffect } from 'react';
-import { Calendar, CheckCircle, XCircle, Clock, Search, Filter, Eye, Download } from 'lucide-react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
+import { Calendar, CheckCircle, XCircle, Plus, Download, RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
+import {
+  getAdminLeaveApplications, approveLeaveApplication, rejectLeaveApplication,
+  getAdminTrainings, createTraining,
+  type LeaveApplication, type Training,
+} from '../../utils/admin-api';
 
 export function StaffPortalManagement() {
-  const [activeTab, setActiveTab] = useState<'leave-approvals' | 'payslips' | 'trainings'>('leave-approvals');
+  const [activeTab, setActiveTab] = useState<'leave-approvals' | 'trainings'>('leave-approvals');
 
   return (
     <div className="min-h-screen bg-[#0B0F1A] text-white p-6">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">Staff Portal Management</h1>
-          <p className="text-[#A0A7B8]">Manage leave approvals, payslips, and training programs</p>
+          <p className="text-[#A0A7B8]">Manage leave approvals and training programs</p>
         </div>
-
-        {/* Tab Navigation */}
         <div className="flex gap-2 mb-8 border-b border-[#7B61FF]/20">
           {[
             { id: 'leave-approvals' as const, label: 'Leave Approvals', icon: Calendar },
-            { id: 'payslips' as const, label: 'Payslips', icon: Download },
-            { id: 'trainings' as const, label: 'Trainings', icon: Eye },
+            { id: 'trainings' as const, label: 'Trainings', icon: Plus },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 border-b-2 transition-colors ${
-                activeTab === tab.id
-                  ? 'border-[#7B61FF] text-[#7B61FF]'
-                  : 'border-transparent text-[#A0A7B8] hover:text-white'
+                activeTab === tab.id ? 'border-[#7B61FF] text-[#7B61FF]' : 'border-transparent text-[#A0A7B8] hover:text-white'
               }`}
             >
               <tab.icon size={18} />
@@ -35,314 +34,346 @@ export function StaffPortalManagement() {
             </button>
           ))}
         </div>
-
-        {/* Content */}
         {activeTab === 'leave-approvals' && <LeaveApprovalsSection />}
-        {activeTab === 'payslips' && <PayslipsSection />}
         {activeTab === 'trainings' && <TrainingsSection />}
       </div>
     </div>
   );
 }
 
-// ─ Leave Approvals Section ─────────────────────────────────────────────────
+// â”€ Leave Approvals Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LeaveApprovalsSection() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [applications, setApplications] = useState<LeaveApplication[]>([]);
+  const [loading, setLoading] = useState(true);
   const [filterStatus, setFilterStatus] = useState('pending');
+  const [search, setSearch] = useState('');
+  const [rejecting, setRejecting] = useState<string | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
 
-  const mockData = [
-    { id: '1', staffName: 'John Doe', leaveType: 'annual', startDate: '2026-07-15', endDate: '2026-07-20', days: 6, reason: 'Family vacation', status: 'pending', appliedAt: '2026-07-07' },
-    { id: '2', staffName: 'Jane Smith', leaveType: 'sick', startDate: '2026-07-08', endDate: '2026-07-09', days: 2, reason: 'Medical appointment', status: 'approved', appliedAt: '2026-07-06' },
-    { id: '3', staffName: 'Mike Johnson', leaveType: 'personal', startDate: '2026-07-10', endDate: '2026-07-12', days: 3, reason: 'Personal matters', status: 'pending', appliedAt: '2026-07-05' },
-  ];
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getAdminLeaveApplications();
+      setApplications(data);
+    } catch (err) {
+      toast.error('Failed to load leave applications');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filteredData = mockData.filter(item =>
-    (filterStatus === 'all' || item.status === filterStatus) &&
-    item.staffName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => { load(); }, [load]);
+
+  const handleApprove = async (id: string, name: string) => {
+    try {
+      await approveLeaveApplication(id);
+      toast.success(`Leave approved for ${name}`);
+      load();
+    } catch (err) {
+      toast.error('Failed to approve leave');
+    }
+  };
+
+  const handleReject = async (id: string) => {
+    try {
+      await rejectLeaveApplication(id, rejectReason);
+      toast.success('Leave application rejected');
+      setRejecting(null);
+      setRejectReason('');
+      load();
+    } catch (err) {
+      toast.error('Failed to reject leave');
+    }
+  };
 
   const statusColors: Record<string, string> = {
     pending: 'bg-[#F59E0B]/15 text-[#F59E0B]',
     approved: 'bg-[#22D3A1]/15 text-[#22D3A1]',
     rejected: 'bg-[#F43F5E]/15 text-[#F43F5E]',
+    cancelled: 'bg-[#A0A7B8]/15 text-[#A0A7B8]',
+    on_leave: 'bg-[#7B61FF]/15 text-[#7B61FF]',
   };
+
+  const filtered = applications.filter(a =>
+    (filterStatus === 'all' || a.status === filterStatus) &&
+    a.staffName?.toLowerCase().includes(search.toLowerCase())
+  );
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
+      <div className="flex gap-3 flex-wrap items-center justify-between">
+        <div className="flex gap-3 flex-wrap">
           <input
             type="text"
             placeholder="Search staff name..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            value={search}
+            onChange={e => setSearch(e.target.value)}
             aria-label="Search staff members"
-            className="w-full px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
+            className="px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm w-52"
           />
+          <select
+            value={filterStatus}
+            onChange={e => setFilterStatus(e.target.value)}
+            aria-label="Filter by status"
+            className="px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
+          >
+            <option value="all">All</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
         </div>
-        <select
-          value={filterStatus}
-          onChange={e => setFilterStatus(e.target.value)}
-          aria-label="Filter by leave application status"
-          className="px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
-        >
-          <option value="all">All Status</option>
-          <option value="pending">Pending</option>
-          <option value="approved">Approved</option>
-          <option value="rejected">Rejected</option>
-        </select>
+        <button onClick={load} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a1f35] text-[#A0A7B8] hover:text-white text-sm transition-colors">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
       </div>
 
-      {/* Leave Requests Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#7B61FF]/20">
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Staff</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Leave Type</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Duration</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Dates</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Reason</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Status</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredData.map(request => (
-              <tr key={request.id} className="border-b border-[#7B61FF]/10 hover:bg-[#7B61FF]/5 transition-colors">
-                <td className="px-4 py-3">{request.staffName}</td>
-                <td className="px-4 py-3 capitalize">{request.leaveType}</td>
-                <td className="px-4 py-3">{request.days} days</td>
-                <td className="px-4 py-3 text-sm text-[#A0A7B8]">
-                  {new Date(request.startDate).toLocaleDateString()} - {new Date(request.endDate).toLocaleDateString()}
-                </td>
-                <td className="px-4 py-3 text-[#A0A7B8]">{request.reason}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${statusColors[request.status]}`}>
-                    {request.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {request.status === 'pending' && (
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => toast.success(`Leave approved for ${request.staffName}`)}
-                        className="px-2 py-1 rounded text-xs bg-[#22D3A1]/20 text-[#22D3A1] hover:bg-[#22D3A1]/30 transition-colors"
-                      >
-                        <CheckCircle size={14} className="inline mr-1" />
-                        Approve
-                      </button>
-                      <button
-                        onClick={() => toast.error(`Leave rejected for ${request.staffName}`)}
-                        className="px-2 py-1 rounded text-xs bg-[#F43F5E]/20 text-[#F43F5E] hover:bg-[#F43F5E]/30 transition-colors"
-                      >
-                        <XCircle size={14} className="inline mr-1" />
-                        Reject
-                      </button>
-                    </div>
-                  )}
-                  {request.status !== 'pending' && (
-                    <span className="text-xs text-[#A0A7B8]">{request.status === 'approved' ? '✓ Approved' : '✗ Rejected'}</span>
-                  )}
-                </td>
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="w-8 h-8 border-2 border-[#7B61FF] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-[#A0A7B8]">No {filterStatus === 'all' ? '' : filterStatus} leave applications found.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#7B61FF]/20">
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Staff</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Type</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Days</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Dates</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Reason</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Status</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map(app => (
+                <tr key={app.id} className="border-b border-[#7B61FF]/10 hover:bg-[#7B61FF]/5 transition-colors">
+                  <td className="px-4 py-3 font-medium">{app.staffName}</td>
+                  <td className="px-4 py-3 capitalize">{app.leaveType}</td>
+                  <td className="px-4 py-3">{app.numberOfDays}d</td>
+                  <td className="px-4 py-3 text-xs text-[#A0A7B8]">
+                    {new Date(app.startDate).toLocaleDateString()} â€“ {new Date(app.endDate).toLocaleDateString()}
+                  </td>
+                  <td className="px-4 py-3 text-[#A0A7B8] max-w-[160px] truncate">{app.reason}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${statusColors[app.status] || ''}`}>
+                      {app.status}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    {app.status === 'pending' ? (
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleApprove(app.id, app.staffName)}
+                          className="px-2 py-1 rounded text-xs bg-[#22D3A1]/20 text-[#22D3A1] hover:bg-[#22D3A1]/30 transition-colors"
+                        >
+                          <CheckCircle size={12} className="inline mr-1" />Approve
+                        </button>
+                        <button
+                          onClick={() => setRejecting(app.id)}
+                          className="px-2 py-1 rounded text-xs bg-[#F43F5E]/20 text-[#F43F5E] hover:bg-[#F43F5E]/30 transition-colors"
+                        >
+                          <XCircle size={12} className="inline mr-1" />Reject
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-[#A0A7B8]">â€”</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Reject Modal */}
+      {rejecting && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-[#1a1f35] rounded-xl p-6 w-full max-w-md border border-[#7B61FF]/20">
+            <h3 className="text-lg font-bold text-white mb-4">Reject Leave Application</h3>
+            <textarea
+              value={rejectReason}
+              onChange={e => setRejectReason(e.target.value)}
+              placeholder="Reason for rejection (optional)..."
+              aria-label="Rejection reason"
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm mb-4 resize-none"
+            />
+            <div className="flex gap-3 justify-end">
+              <button onClick={() => { setRejecting(null); setRejectReason(''); }} className="px-4 py-2 rounded-lg bg-[#A0A7B8]/20 text-[#A0A7B8] text-sm hover:bg-[#A0A7B8]/30 transition-colors">Cancel</button>
+              <button onClick={() => handleReject(rejecting)} className="px-4 py-2 rounded-lg bg-[#F43F5E]/20 text-[#F43F5E] text-sm hover:bg-[#F43F5E]/30 transition-colors">Confirm Reject</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-// ─ Payslips Section ────────────────────────────────────────────────────────
-function PayslipsSection() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedMonth, setSelectedMonth] = useState('2026-07');
-
-  const mockPayslips = [
-    { id: '1', staffName: 'John Doe', email: 'john@example.com', salary: 50000, deductions: 8000, net: 42000, month: '2026-07', status: 'finalized' },
-    { id: '2', staffName: 'Jane Smith', email: 'jane@example.com', salary: 45000, deductions: 7200, net: 37800, month: '2026-07', status: 'draft' },
-    { id: '3', staffName: 'Mike Johnson', email: 'mike@example.com', salary: 55000, deductions: 9000, net: 46000, month: '2026-07', status: 'paid' },
-  ];
-
-  const filteredPayslips = mockPayslips.filter(p =>
-    p.staffName.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const statusBadges: Record<string, string> = {
-    draft: 'bg-[#A0A7B8]/15 text-[#A0A7B8]',
-    finalized: 'bg-[#7B61FF]/15 text-[#7B61FF]',
-    paid: 'bg-[#22D3A1]/15 text-[#22D3A1]',
-  };
-
-  return (
-    <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Search staff name..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            aria-label="Search staff members for payslips"
-            className="w-full px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
-          />
-        </div>
-        <select
-          value={selectedMonth}
-          onChange={e => setSelectedMonth(e.target.value)}
-          aria-label="Select payslip month"
-          className="px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
-        >
-          <option value="2026-07">July 2026</option>
-          <option value="2026-06">June 2026</option>
-          <option value="2026-05">May 2026</option>
-          <option value="2026-04">April 2026</option>
-          <option value="2026-03">March 2026</option>
-        </select>
-      </div>
-
-      {/* Payslips Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#7B61FF]/20">
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Staff</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Email</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Salary</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Deductions</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Net Pay</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Status</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredPayslips.map(payslip => (
-              <tr key={payslip.id} className="border-b border-[#7B61FF]/10 hover:bg-[#7B61FF]/5 transition-colors">
-                <td className="px-4 py-3">{payslip.staffName}</td>
-                <td className="px-4 py-3 text-[#A0A7B8] text-xs">{payslip.email}</td>
-                <td className="px-4 py-3">₦{(payslip.salary / 100).toLocaleString()}</td>
-                <td className="px-4 py-3 text-[#F43F5E]">₦{(payslip.deductions / 100).toLocaleString()}</td>
-                <td className="px-4 py-3 font-semibold text-[#22D3A1]">₦{(payslip.net / 100).toLocaleString()}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${statusBadges[payslip.status]}`}>
-                    {payslip.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => toast.success(`Payslip details for ${payslip.staffName} opened`)}
-                      className="px-2 py-1 rounded text-xs bg-[#7B61FF]/20 text-[#7B61FF] hover:bg-[#7B61FF]/30 transition-colors"
-                    >
-                      View
-                    </button>
-                    <button
-                      onClick={() => toast.success(`Payslip downloaded for ${payslip.staffName}`)}
-                      className="px-2 py-1 rounded text-xs bg-[#22D3A1]/20 text-[#22D3A1] hover:bg-[#22D3A1]/30 transition-colors"
-                    >
-                      <Download size={12} className="inline mr-1" />
-                      Download
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
-// ─ Trainings Section ───────────────────────────────────────────────────────
+// â”€ Trainings Section â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TrainingsSection() {
-  const [searchTerm, setSearchTerm] = useState('');
+  const [trainings, setTrainings] = useState<Training[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ title: '', category: 'general', instructor: '', startDate: '', endDate: '', duration: 1, isOnline: false, maxParticipants: '' });
+  const [saving, setSaving] = useState(false);
 
-  const mockTrainings = [
-    { id: '1', title: 'Leadership Skills', category: 'Professional Development', instructor: 'Dr. Sarah', schedule: '2026-07-20 - 2026-07-22', enrolled: 25, maxCapacity: 30, status: 'scheduled' },
-    { id: '2', title: 'Data Analysis Basics', category: 'Technical', instructor: 'John Tech', schedule: '2026-07-15 - 2026-07-17', enrolled: 20, maxCapacity: 20, status: 'ongoing' },
-    { id: '3', title: 'Communication Workshop', category: 'Soft Skills', instructor: 'Emma Brown', schedule: '2026-06-10 - 2026-06-12', enrolled: 18, maxCapacity: 25, status: 'completed' },
-  ];
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await getAdminTrainings();
+      setTrainings(data);
+    } catch {
+      toast.error('Failed to load trainings');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const filteredTrainings = mockTrainings.filter(t =>
-    t.title.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  useEffect(() => { load(); }, [load]);
+
+  const handleCreate = async () => {
+    if (!form.title || !form.startDate) { toast.error('Title and start date are required'); return; }
+    setSaving(true);
+    try {
+      await createTraining({ ...form, maxParticipants: form.maxParticipants ? Number(form.maxParticipants) : undefined });
+      toast.success('Training created');
+      setShowForm(false);
+      setForm({ title: '', category: 'general', instructor: '', startDate: '', endDate: '', duration: 1, isOnline: false, maxParticipants: '' });
+      load();
+    } catch {
+      toast.error('Failed to create training');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const statusBadges: Record<string, string> = {
     scheduled: 'bg-[#7B61FF]/15 text-[#7B61FF]',
     ongoing: 'bg-[#F59E0B]/15 text-[#F59E0B]',
     completed: 'bg-[#22D3A1]/15 text-[#22D3A1]',
+    cancelled: 'bg-[#F43F5E]/15 text-[#F43F5E]',
   };
+
+  const filtered = trainings.filter(t => t.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div className="space-y-6">
-      {/* Filters */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
-          <input
-            type="text"
-            placeholder="Search training title..."
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            aria-label="Search training programs"
-            className="w-full px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm"
-          />
+      <div className="flex gap-3 items-center justify-between flex-wrap">
+        <input
+          type="text"
+          placeholder="Search trainings..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          aria-label="Search training programs"
+          className="px-3 py-2 rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 text-white text-sm w-52"
+        />
+        <div className="flex gap-2">
+          <button onClick={load} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#1a1f35] text-[#A0A7B8] hover:text-white text-sm transition-colors">
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </button>
+          <button onClick={() => setShowForm(!showForm)} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[#7B61FF]/20 text-[#7B61FF] hover:bg-[#7B61FF]/30 text-sm transition-colors">
+            <Plus size={14} /> Add Training
+          </button>
         </div>
       </div>
 
-      {/* Trainings Table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-[#7B61FF]/20">
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Training Title</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Category</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Instructor</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Schedule</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Enrollment</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Status</th>
-              <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredTrainings.map(training => (
-              <tr key={training.id} className="border-b border-[#7B61FF]/10 hover:bg-[#7B61FF]/5 transition-colors">
-                <td className="px-4 py-3 font-medium">{training.title}</td>
-                <td className="px-4 py-3 text-[#A0A7B8]">{training.category}</td>
-                <td className="px-4 py-3 text-[#A0A7B8]">{training.instructor}</td>
-                <td className="px-4 py-3 text-xs text-[#A0A7B8]">{training.schedule}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-32 h-2 bg-[#7B61FF]/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-[#7B61FF] rounded-full transition-all"
-                        style={{ width: `${Math.min((training.enrolled / training.maxCapacity) * 100, 100)}%` }}
-                      />
-                    </div>
-                    <span className="text-xs text-[#A0A7B8]">{training.enrolled}/{training.maxCapacity}</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${statusBadges[training.status]}`}>
-                    {training.status}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <button
-                    onClick={() => toast.success(`Training details for ${training.title} opened`)}
-                    className="px-2 py-1 rounded text-xs bg-[#7B61FF]/20 text-[#7B61FF] hover:bg-[#7B61FF]/30 transition-colors"
-                  >
-                    Manage
-                  </button>
-                </td>
+      {showForm && (
+        <div className="bg-[#1a1f35] rounded-xl p-6 border border-[#7B61FF]/20 space-y-4">
+          <h3 className="font-bold text-white">New Training Program</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="t-title" className="block text-xs text-[#A0A7B8] mb-1">Title *</label>
+              <input id="t-title" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm" />
+            </div>
+            <div>
+              <label htmlFor="t-instructor" className="block text-xs text-[#A0A7B8] mb-1">Instructor</label>
+              <input id="t-instructor" value={form.instructor} onChange={e => setForm(f => ({ ...f, instructor: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm" />
+            </div>
+            <div>
+              <label htmlFor="t-start" className="block text-xs text-[#A0A7B8] mb-1">Start Date *</label>
+              <input id="t-start" type="date" value={form.startDate} onChange={e => setForm(f => ({ ...f, startDate: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm" />
+            </div>
+            <div>
+              <label htmlFor="t-end" className="block text-xs text-[#A0A7B8] mb-1">End Date</label>
+              <input id="t-end" type="date" value={form.endDate} onChange={e => setForm(f => ({ ...f, endDate: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm" />
+            </div>
+            <div>
+              <label htmlFor="t-category" className="block text-xs text-[#A0A7B8] mb-1">Category</label>
+              <select id="t-category" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm">
+                <option value="general">General</option>
+                <option value="technical">Technical</option>
+                <option value="compliance">Compliance</option>
+                <option value="leadership">Leadership</option>
+                <option value="soft_skills">Soft Skills</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="t-max" className="block text-xs text-[#A0A7B8] mb-1">Max Participants</label>
+              <input id="t-max" type="number" value={form.maxParticipants} onChange={e => setForm(f => ({ ...f, maxParticipants: e.target.value }))} placeholder="Leave blank for unlimited" className="w-full px-3 py-2 rounded-lg bg-[#0B0F1A] border border-[#7B61FF]/20 text-white text-sm" />
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <input id="t-online" type="checkbox" checked={form.isOnline} onChange={e => setForm(f => ({ ...f, isOnline: e.target.checked }))} />
+            <label htmlFor="t-online" className="text-sm text-[#A0A7B8]">Online Training</label>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 rounded-lg bg-[#A0A7B8]/20 text-[#A0A7B8] text-sm hover:bg-[#A0A7B8]/30 transition-colors">Cancel</button>
+            <button onClick={handleCreate} disabled={saving} className="px-4 py-2 rounded-lg bg-[#7B61FF]/20 text-[#7B61FF] text-sm hover:bg-[#7B61FF]/30 transition-colors disabled:opacity-50">
+              {saving ? 'Creating...' : 'Create Training'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex justify-center py-16">
+          <div className="w-8 h-8 border-2 border-[#7B61FF] border-t-transparent rounded-full animate-spin" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-16 text-[#A0A7B8]">No training programs found. Click "Add Training" to create one.</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-[#7B61FF]/20">
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Title</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Category</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Instructor</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Schedule</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Enrollment</th>
+                <th className="px-4 py-3 text-left text-[#A0A7B8] font-semibold">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map(t => (
+                <tr key={t.id} className="border-b border-[#7B61FF]/10 hover:bg-[#7B61FF]/5 transition-colors">
+                  <td className="px-4 py-3 font-medium">{t.title}</td>
+                  <td className="px-4 py-3 text-[#A0A7B8] capitalize">{t.category}</td>
+                  <td className="px-4 py-3 text-[#A0A7B8]">{t.instructor || 'â€”'}</td>
+                  <td className="px-4 py-3 text-xs text-[#A0A7B8]">{t.startDate}{t.endDate && t.endDate !== t.startDate ? ` â€“ ${t.endDate}` : ''}</td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-24 h-2 bg-[#7B61FF]/20 rounded-full overflow-hidden">
+                        <div className="h-full bg-[#7B61FF] rounded-full transition-all" style={{ width: t.maxParticipants ? `${Math.min((t.currentParticipants / t.maxParticipants) * 100, 100)}%` : '0%' }} />
+                      </div>
+                      <span className="text-xs text-[#A0A7B8]">{t.currentParticipants}{t.maxParticipants ? `/${t.maxParticipants}` : ''}</span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold capitalize ${statusBadges[t.status] || ''}`}>{t.status}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
