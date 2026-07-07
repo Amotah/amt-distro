@@ -198,7 +198,7 @@ export function PrivacyPolicy() {
                 <li><strong className="text-white">Withdraw Consent:</strong> Withdraw consent for marketing communications</li>
               </ul>
               <p className="text-[#B3B3B3] leading-relaxed mt-4">
-                To exercise these rights, contact us at privacy@amtmusik.com. We will respond within 30 days.
+                To exercise these rights, contact us at privacy@amtdistro.com.ng. We will respond within 30 days.
               </p>
             </div>
 
@@ -260,8 +260,8 @@ export function PrivacyPolicy() {
               <div className="bg-[#0A0A0A] p-4 rounded-lg border border-[#FF6B00]/20">
                 <p className="text-white mb-2"><strong>Data Protection Officer</strong></p>
                 <p className="text-white mb-2"><strong>AMT DISTRO</strong></p>
-                <p className="text-[#B3B3B3]">Email: privacy@amtmusik.com</p>
-                <p className="text-[#B3B3B3]">Phone: +234 (0) 800 000 0000</p>
+                <p className="text-[#B3B3B3]">Email: privacy@amtdistro.com.ng</p>
+                <p className="text-[#B3B3B3]">Phone: +234 (0) 816 298 8301</p>
                 <p className="text-[#B3B3B3]">Address: Lagos, Nigeria</p>
               </div>
             </div>

@@ -15,27 +15,30 @@ export function Features() {
   const { t } = useLanguage();
 
   return (
-    <section id="features" className="bg-[#0A0A0A] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
+    <section id="features" className="bg-[radial-gradient(circle_at_top,rgba(255,107,0,0.08),transparent_40%),#0A0A0A] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
       <div className="mx-auto w-full max-w-7xl">
-        <div className="mb-12 text-center">
-          <p className="landing-section-kicker">Core capabilities</p>
-          <h2 className="text-4xl mb-4 text-white font-bold">
+        <div className="mb-12 rounded-3xl border border-white/10 bg-gradient-to-br from-[#19120d]/80 to-[#0d0d0d]/90 p-6 text-center sm:p-8">
+          <p className="landing-section-kicker">Everything You Need</p>
+          <h2 className="mb-3 text-4xl font-extrabold text-white">
             {t('features.title', 'Everything You Need to Succeed')}
           </h2>
-          <p className="text-xl text-[#B3B3B3] max-w-2xl mx-auto">
+          <p className="mx-auto max-w-2xl text-base text-[#B3B3B3] sm:text-lg">
             {t('features.subtitle', 'Professional music distribution made simple. Focus on creating while we handle the rest.')}
           </p>
         </div>
 
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {FEATURE_KEYS.map((feature) => {
+          {FEATURE_KEYS.map((feature, index) => {
             const Icon = feature.icon;
             return (
-              <Card key={feature.titleKey} className="landing-stagger-item landing-feature-card bg-[#161616] border-[#FF6B00]/20 p-6 transition-all hover:shadow-lg hover:shadow-[#FF6B00]/20">
-                <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#FFD600] shadow-[0_12px_30px_rgba(255,107,0,0.18)]">
-                  <Icon className="h-5 w-5 text-white" />
+              <Card key={feature.titleKey} className="landing-stagger-item landing-feature-card group border-[#FF6B00]/20 bg-[#161616] p-6 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-[#FF6B00]/20">
+                <div className="mb-4 flex items-center justify-between gap-2">
+                  <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#FFD600] shadow-[0_12px_30px_rgba(255,107,0,0.18)]">
+                    <Icon className="h-5 w-5 text-white" />
+                  </div>
+                  <span className="text-xs font-semibold uppercase tracking-[0.18em] text-[#6f6f6f]">{String(index + 1).padStart(2, '0')}</span>
                 </div>
-                <h3 className="mb-3 text-lg font-bold text-white">{t(feature.titleKey, feature.titleFb)}</h3>
+                <h3 className="mb-3 text-lg font-bold text-white group-hover:text-[#FFD600]">{t(feature.titleKey, feature.titleFb)}</h3>
                 <p className="text-sm leading-6 text-[#B3B3B3]">{t(feature.descKey, feature.descFb)}</p>
               </Card>
             );

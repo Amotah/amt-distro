@@ -1,9 +1,9 @@
 ﻿import { useState } from 'react';
 import { useLanguage } from '../utils/i18n';
 import { supabase } from '../../../utils/supabase/client';
-import { projectId } from '../../../utils/supabase/info';
 import { getProfileLocation, recordDashboardLogin } from '../utils/dashboard-welcome';
 import { createArtistProfileWithToken, createLabelProfileWithToken, getCurrentUserProfileWithToken, updateUserProfile } from '../utils/user-api';
+import { BACKEND_API_BASE_URL } from '../utils/backend-api-base';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
@@ -12,8 +12,20 @@ import { AuthLayout } from './AuthLayout';
 import { Music, Mail, Lock, ArrowRight, Eye, EyeOff, Loader2, AlertCircle } from 'lucide-react';
 
 interface LoginProps {
-  onLogin: (userRole: string, userId: string) => void;
+  onLogin: (userRole: string, userId: string, dashboardPath?: string) => void;
 }
+
+type BackendAuthUser = {
+  _id?: string;
+  id?: string;
+  role: string;
+};
+
+type BackendAuthResponse = {
+  token: string;
+  dashboardPath?: string;
+  user: BackendAuthUser;
+};
 
 type PendingSignupProfile = {
   email: string;
@@ -29,6 +41,29 @@ type PendingSignupProfile = {
 };
 
 const PENDING_SIGNUP_PROFILE_KEY = 'pending_signup_profile';
+
+function buildLoginEmailCandidates(emailOrUsername: string) {
+  const input = emailOrUsername.trim();
+  const candidates = new Set<string>();
+
+  if (!input) {
+    return [];
+  }
+
+  candidates.add(input);
+
+  if (!input.includes('@')) {
+    if (input === 'admin') {
+      candidates.add('admin@amtdistro.com');
+      candidates.add('admin@amtdistro.com.ng');
+    } else {
+      candidates.add(`${input}@amtdistro.com`);
+      candidates.add(`${input}@amtdistro.com.ng`);
+    }
+  }
+
+  return Array.from(candidates);
+}
 
 function readPendingSignupProfile(): PendingSignupProfile | null {
   try {
@@ -66,7 +101,7 @@ export function Login({ onLogin }: LoginProps) {
   const [formData, setFormData] = useState({
     emailOrUsername: '',
     password: '',
-    rememberMe: false,
+    rememberMe: true,
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -85,37 +120,123 @@ export function Login({ onLogin }: LoginProps) {
     setIsLoading(true);
 
     try {
-      let email = formData.emailOrUsername;
-      
-      // Check if input is username (not an email)
-      if (!formData.emailOrUsername.includes('@')) {
-        // For usernames, convert to email format
-        // Special case for admin username
-        if (formData.emailOrUsername === 'admin') {
-          email = 'admin@amtmusik.com';
-        } else {
-          // For other usernames, append domain
-          email = `${formData.emailOrUsername}@amtmusik.com`;
+      const emailCandidates = buildLoginEmailCandidates(formData.emailOrUsername);
+      let successfulEmail = '';
+      let backendData: BackendAuthResponse | null = null;
+      let backendOperationalError: string | null = null;
+      let authSession: {
+        access_token: string;
+        user: {
+          id: string;
+          email?: string | null;
+          user_metadata?: {
+            mustChangePassword?: boolean;
+          };
+        };
+      } | null = null;
+
+      for (const email of emailCandidates) {
+        try {
+          const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/auth/login`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              email,
+              password: formData.password,
+            }),
+          });
+
+          if (backendResponse.ok) {
+            backendData = await backendResponse.json() as BackendAuthResponse;
+            successfulEmail = email;
+            break;
+          }
+
+          if (backendResponse.status === 401 || backendResponse.status === 404) {
+            continue;
+          }
+
+          const backendError = await backendResponse.json().catch(() => null) as { message?: string } | null;
+          backendOperationalError = backendError?.message || `Login service returned ${backendResponse.status}. Please try again.`;
+          break;
+        } catch (backendError) {
+          const message = backendError instanceof Error ? backendError.message : 'Unable to reach login service.';
+          backendOperationalError = message;
+          break;
         }
       }
 
-      // Sign in with Supabase
-      const { data, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password: formData.password,
-      });
+      if (!backendData && backendOperationalError) {
+        setError(backendOperationalError);
+        setIsLoading(false);
+        return;
+      }
 
-      if (authError) {
+      if (backendData) {
+        const backendUserId = backendData.user?._id || backendData.user?.id;
+        if (!backendUserId || !backendData.token) {
+          setError('Login failed: incomplete backend auth response.');
+          setIsLoading(false);
+          return;
+        }
+
+        const normalizedRole = backendData.user.role === 'partner' ? 'label' : backendData.user.role;
+        const subscriptionTier = normalizedRole === 'label' ? 'partner' : 'artist';
+
+        sessionStorage.setItem('access_token', backendData.token);
+        sessionStorage.setItem('user_id', backendUserId);
+        sessionStorage.setItem('user_role', normalizedRole);
+        sessionStorage.setItem('user_subscription_tier', subscriptionTier);
+        sessionStorage.removeItem('mustChangePassword');
+
+        if (normalizedRole !== 'admin') {
+          sessionStorage.removeItem('admin_role');
+          sessionStorage.removeItem('admin_permissions');
+        }
+
+        onLogin(normalizedRole, backendUserId, backendData.dashboardPath);
+        setIsLoading(false);
+        return;
+      }
+
+      for (const email of emailCandidates) {
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email,
+          password: formData.password,
+        });
+
+        if (authError) {
+          continue;
+        }
+
+        if (!data.session || !data.user) {
+          continue;
+        }
+
+        authSession = {
+          access_token: data.session.access_token,
+          user: data.user,
+        };
+        successfulEmail = email;
+        break;
+      }
+
+      if (!authSession) {
         setError('Invalid email or password. Please check your credentials and try again.');
         setIsLoading(false);
         return;
       }
 
-      if (!data.session || !data.user) {
-        setError('Login failed: no session/user returned.');
-        setIsLoading(false);
-        return;
-      }
+      const data = {
+        session: {
+          access_token: authSession.access_token,
+        },
+        user: authSession.user,
+      };
+
+      let email = successfulEmail || data.user.email || formData.emailOrUsername;
 
       // Store session token
       sessionStorage.setItem('access_token', data.session.access_token);
@@ -212,7 +333,7 @@ export function Login({ onLogin }: LoginProps) {
       // If user role is 'admin', fetch admin details
       if (user.role === 'admin') {
         try {
-          const adminResponse = await fetch(`https://${projectId}.supabase.co/functions/v1/make-server-79198001/admin/me`, {
+          const adminResponse = await fetch(`${BACKEND_API_BASE_URL}/admin/me`, {
             headers: {
               'Authorization': `Bearer ${data.session.access_token}`,
             },
@@ -389,7 +510,15 @@ export function Login({ onLogin }: LoginProps) {
       {/* Sign Up */}
       <p className="mt-6 text-center text-sm text-[#B3B3B3]">
         {t('login.noAccount', "Don't have an account?")}{' '}
-        <a href="/get-started" className="text-[#FF6B00] hover:text-[#FFD600] font-medium underline underline-offset-2 transition-colors">
+        <a
+          href="/get-started"
+          onClick={(event) => {
+            event.preventDefault();
+            window.history.pushState({}, '', '/get-started');
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          }}
+          className="text-[#FF6B00] hover:text-[#FFD600] font-medium underline underline-offset-2 transition-colors"
+        >
           {t('login.signUp', 'Create an account')}
         </a>
       </p>

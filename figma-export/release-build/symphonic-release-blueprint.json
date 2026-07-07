@@ -1,0 +1,153 @@
+{
+  "source": {
+    "document": "Symphonic Management System 1.pdf",
+    "importedAt": "2026-05-29",
+    "notes": "Built from extracted portal settings and partner state shown in the PDF screenshots."
+  },
+  "releaseAvailability": {
+    "recommendedReleaseDate": "2026-07-03",
+    "preOrderWindow": {
+      "enabled": false,
+      "startDate": null,
+      "notes": "Optional in source file."
+    },
+    "exclusiveWindow": {
+      "enabled": false,
+      "partner": null,
+      "startDate": null,
+      "endDate": null,
+      "notes": "Optional in source file."
+    },
+    "releaseDate": "2026-05-29",
+    "releaseTime": {
+      "mode": "default_midnight_per_territory",
+      "customTime": null
+    }
+  },
+  "territoryRights": {
+    "mode": "worldwide",
+    "includedTerritories": [],
+    "excludedTerritories": [],
+    "notes": "World wide release selected in source file."
+  },
+  "partners": {
+    "selectionMode": "all_selected_except_unavailable",
+    "unavailable": [
+      "Carbon",
+      "ClicknClear",
+      "Gracenote",
+      "Music Worx",
+      "Promo Only",
+      "USEA",
+      "Volumo"
+    ],
+    "streamingAndDownload": [
+      "Alibaba",
+      "Amazon",
+      "Anghami",
+      "Apple Music / iTunes",
+      "Audiomack",
+      "Boomplay",
+      "Deezer",
+      "HIO Music",
+      "IDAGIO",
+      "iHeartRadio",
+      "JioSaavn",
+      "JOOX",
+      "KK Box",
+      "Lissen",
+      "LiveOne",
+      "NetEase",
+      "Pandora",
+      "Peloton",
+      "Qobuz",
+      "Ringtones.com",
+      "Spotify",
+      "Tapedeck",
+      "Tencent",
+      "Tidal",
+      "Trebel",
+      "YouSee / Telmore Musik"
+    ],
+    "ugcRightsManagement": [
+      "Audible Magic",
+      "Facebook / Instagram",
+      "Kuaishou",
+      "Mixcloud",
+      "Pretzel",
+      "TikTok",
+      "YouTube"
+    ],
+    "whiteLabel": [
+      "7Digital",
+      "Claro",
+      "d'Music",
+      "Fluxus",
+      "Kan Music",
+      "KDM (K Digital Media)",
+      "Medianet",
+      "Tuned Global",
+      "VL Group"
+    ],
+    "technology": [
+      "ACRCloud",
+      "BMAT"
+    ],
+    "licensing": [
+      "Lickd"
+    ],
+    "backgroundMusic": [
+      "AMI Entertainment",
+      "TouchTunes"
+    ]
+  },
+  "releaseTemplate": {
+    "releaseTitle": "",
+    "releaseVersion": "",
+    "primaryArtist": "",
+    "contributors": [],
+    "releaseType": "Single | EP | Album | Compilation | Remix",
+    "genre": "",
+    "subgenre": "",
+    "language": "",
+    "vocalLanguage": "",
+    "coverArtAsset": "",
+    "upc": "",
+    "labelName": "",
+    "catalogNumber": "",
+    "copyrightLine": "",
+    "publishingRights": "",
+    "explicit": false,
+    "isrc": "",
+    "recordingYear": null,
+    "countryOfRecording": "",
+    "trackCount": 0,
+    "tracks": [
+      {
+        "trackTitle": "",
+        "mixVersion": "",
+        "primaryArtist": "",
+        "featuring": "",
+        "remixer": "",
+        "explicit": false,
+        "genre": "",
+        "subgenre": "",
+        "isrc": "",
+        "audioFile": "",
+        "audioDuration": "",
+        "previewStart": "",
+        "lyrics": "",
+        "language": "",
+        "vocalLanguage": "",
+        "contributors": []
+      }
+    ]
+  },
+  "qaChecklist": [
+    "Set release date at least 4-6 weeks in the future if marketing lead time is needed.",
+    "Confirm artwork, metadata, and audio pass validation before final submit.",
+    "Verify unavailable partners are still excluded at final review.",
+    "Confirm territory remains worldwide unless rights limitations require exclusions.",
+    "Save draft, run final QA, then submit for review."
+  ]
+}

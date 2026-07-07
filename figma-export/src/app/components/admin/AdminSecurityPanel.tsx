@@ -20,12 +20,18 @@ import {
 // ── Palette ──────────────────────────────────────────────────────────────────
 const ROLE_CLS: Record<string, string> = {
   superadmin:        'bg-[#F43F5E]/15 text-[#F43F5E] border border-[#F43F5E]/30',
+  system_admin:      'bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30',
   admin_operations:  'bg-[#7B61FF]/15 text-[#7B61FF] border border-[#7B61FF]/30',
   admin_finance:     'bg-[#22D3A1]/15 text-[#22D3A1] border border-[#22D3A1]/30',
   admin_content:     'bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30',
   admin_support:     'bg-[#F59E0B]/15 text-[#F59E0B] border border-[#F59E0B]/30',
   admin_fraud:       'bg-[#F43F5E]/15 text-[#F43F5E] border border-[#F43F5E]/30',
   admin_analytics:   'bg-[#A0A7B8]/15 text-[#A0A7B8] border border-[#A0A7B8]/30',
+  hr_manager:        'bg-[#06B6D4]/15 text-[#06B6D4] border border-[#06B6D4]/30',
+  hr_specialist:     'bg-[#8B5CF6]/15 text-[#8B5CF6] border border-[#8B5CF6]/30',
+  hr_coordinator:    'bg-[#06B6D4]/15 text-[#06B6D4] border border-[#06B6D4]/30',
+  payroll_manager:   'bg-[#10B981]/15 text-[#10B981] border border-[#10B981]/30',
+  recruitment_officer: 'bg-[#EC4899]/15 text-[#EC4899] border border-[#EC4899]/30',
 };
 const STATUS_CLS: Record<string, string> = {
   active:   'bg-[#22D3A1]/15 text-[#22D3A1]',

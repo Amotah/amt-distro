@@ -19,8 +19,10 @@ const UpgradePlan = lazy(() => import('./components/dashboard/UpgradePlan').then
 const PaymentPage = lazy(() => import('./components/dashboard/PaymentPage').then((module) => ({ default: module.PaymentPage })));
 const PaymentCallback = lazy(() => import('./components/dashboard/PaymentCallback').then((module) => ({ default: module.PaymentCallback })));
 const DashboardPaymentHistoryPage = lazy(() => import('./components/dashboard/DashboardPaymentHistoryPage').then((module) => ({ default: module.DashboardPaymentHistoryPage })));
+const SubscriptionCenter = lazy(() => import('./components/dashboard/SubscriptionCenter').then((module) => ({ default: module.SubscriptionCenter })));
 const NotificationsCenter = lazy(() => import('./components/dashboard/NotificationsCenter').then((module) => ({ default: module.NotificationsCenter })));
 const MyDisputes = lazy(() => import('./components/dashboard/MyDisputes').then((module) => ({ default: module.MyDisputes })));
+const SupportCenter = lazy(() => import('./components/dashboard/SupportCenter').then((module) => ({ default: module.SupportCenter })));
 const ReportingDashboard = lazy(() => import('./components/dashboard/ReportingDashboard').then((module) => ({ default: module.ReportingDashboard })));
 const ContractSigningCenter = lazy(() => import('./components/contracts/ContractSigningCenter').then((module) => ({ default: module.ContractSigningCenter })));
 const SmartLinksView = lazy(() => import('./components/dashboard/SmartLinksView').then((module) => ({ default: module.SmartLinksView })));
@@ -141,12 +143,20 @@ export const createDashboardRouter = (onLogout: () => void) => {
           element: withSuspense(<DashboardPaymentHistoryPage />),
         },
         {
+          path: 'subscription',
+          element: withSuspense(<SubscriptionCenter />),
+        },
+        {
           path: 'notifications',
           element: withSuspense(<NotificationsCenter />),
         },
         {
           path: 'disputes',
           element: withSuspense(<MyDisputes />),
+        },
+        {
+          path: 'support',
+          element: withSuspense(<SupportCenter />),
         },
         {
           path: 'reports',

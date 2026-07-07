@@ -38,6 +38,18 @@ type SignupPlan = {
   recommended?: boolean;
 };
 
+type BackendRegisterUser = {
+  _id?: string;
+  id?: string;
+  role: string;
+};
+
+type BackendRegisterResponse = {
+  token: string;
+  dashboardPath?: string;
+  user: BackendRegisterUser;
+};
+
 type GetStartedProps = {
   initialPlanId: string;
   onComplete: (plan: { id: string; name: string; price: string; period: string }) => void;
@@ -126,6 +138,12 @@ type PendingSignupProfile = {
 };
 
 const PENDING_SIGNUP_PROFILE_KEY = 'pending_signup_profile';
+const configuredApiBaseUrl = (((import.meta as any).env?.VITE_AMT_DISTRO_API_BASE_URL as string) || '').trim().replace(/\/$/, '');
+const usesDeprecatedSupabaseAuth = configuredApiBaseUrl.includes('supabase.co');
+
+const BACKEND_API_BASE_URL = configuredApiBaseUrl && !usesDeprecatedSupabaseAuth
+  ? configuredApiBaseUrl
+  : 'https://amt-distro-api.vercel.app';
 
 function calcStrength(password: string) {
   if (!password) return 0;
@@ -135,6 +153,17 @@ function calcStrength(password: string) {
   if (/[0-9]/.test(password)) score += 1;
   if (/[^A-Za-z0-9]/.test(password)) score += 1;
   return score;
+}
+
+function isNetworkFetchError(message: string) {
+  const normalizedMessage = message.toLowerCase();
+  return (
+    normalizedMessage.includes('failed to fetch')
+    || normalizedMessage.includes('networkerror')
+    || normalizedMessage.includes('network error')
+    || normalizedMessage.includes('cors')
+    || normalizedMessage.includes('fetch failed')
+  );
 }
 
 export function GetStarted({ initialPlanId, onComplete }: GetStartedProps) {
@@ -357,80 +386,42 @@ export function GetStarted({ initialPlanId, onComplete }: GetStartedProps) {
     setIsSubmitting(true);
 
     try {
-      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-        email: formData.email.trim(),
-        password: formData.password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/login`,
+      const registerResponse = await fetch(`${BACKEND_API_BASE_URL}/auth/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-      });
-
-      if (signUpError) throw signUpError;
-
-      let session = signUpData.session;
-      let authUser = signUpData.user;
-
-      if (!session) {
-        const signInResult = await supabase.auth.signInWithPassword({
+        body: JSON.stringify({
+          fullName: `${formData.firstName.trim()} ${formData.lastName.trim()}`.trim(),
           email: formData.email.trim(),
           password: formData.password,
-        });
-
-        if (signInResult.error) {
-          const signInMessage = signInResult.error.message || 'Unable to sign in after account creation.';
-          if (signInMessage.toLowerCase().includes('email not confirmed')) {
-            sessionStorage.setItem(PENDING_SIGNUP_PROFILE_KEY, JSON.stringify(pendingSignupProfile));
-            startResendCooldown(60);
-            setConfirmationNotice('Your account was created. Verify your email, then log in to continue.');
-            return;
-          }
-
-          throw signInResult.error;
-        }
-
-        session = signInResult.data.session;
-        authUser = signInResult.data.user;
-      }
-
-      if (!session || !authUser) {
-        throw new Error('Account created, but no active session was returned. Please log in.');
-      }
-
-      sessionStorage.setItem('access_token', session.access_token);
-      sessionStorage.setItem('user_id', authUser.id);
-
-      if (isLabelPlan) {
-        await createLabelProfileWithToken(session.access_token, {
-          email: formData.email.trim(),
-          labelName: formData.artistName.trim(),
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          description: bio.trim(),
-        });
-      } else {
-        await createArtistProfileWithToken(session.access_token, {
-          email: formData.email.trim(),
-          artistName: formData.artistName.trim(),
-          firstName: formData.firstName.trim(),
-          lastName: formData.lastName.trim(),
-          subscriptionTier,
-        });
-      }
-
-      await updateUserProfile({
-        country: formData.country,
-        bio: bio.trim(),
-        genres,
+          role: isLabelPlan ? 'label' : 'artist',
+        }),
       });
 
-      if (isLabelPlan && labelContactEmail.trim()) {
-        await updateUserProfile({
-          socialLinks: {
-            website: `mailto:${labelContactEmail.trim()}`,
-          },
-        });
+      if (!registerResponse.ok) {
+        const backendError = await registerResponse.json().catch(() => null) as { message?: string } | null;
+        const backendMessage = (backendError?.message || '').toLowerCase();
+
+        if (registerResponse.status === 409 || backendMessage.includes('duplicate')) {
+          throw new Error('An account with this email already exists. Please sign in instead.');
+        }
+
+        throw new Error(backendError?.message || 'Unable to create your account.');
       }
 
+      const registerData = await registerResponse.json() as BackendRegisterResponse;
+      const backendUserId = registerData.user?._id || registerData.user?.id;
+
+      if (!registerData.token || !backendUserId) {
+        throw new Error('Account created, but authentication data is incomplete. Please sign in.');
+      }
+
+      const normalizedRole = registerData.user.role === 'partner' ? 'label' : registerData.user.role;
+      sessionStorage.setItem('access_token', registerData.token);
+      sessionStorage.setItem('user_id', backendUserId);
+      sessionStorage.setItem('user_role', normalizedRole);
+      sessionStorage.setItem('user_subscription_tier', subscriptionTier);
       sessionStorage.removeItem(PENDING_SIGNUP_PROFILE_KEY);
 
       const selectedPlanData = PLAN_OPTIONS.find((p) => p.id === selectedPlan) ?? PLAN_OPTIONS[0];
@@ -444,21 +435,14 @@ export function GetStarted({ initialPlanId, onComplete }: GetStartedProps) {
       setIsConfirmed(true);
 
       setTimeout(() => {
-        window.location.href = isLabelPlan ? '/label-dashboard' : '/dashboard';
+        const nextPath = registerData.dashboardPath || (isLabelPlan ? '/label-dashboard' : '/dashboard');
+        window.history.pushState({}, '', nextPath);
+        window.dispatchEvent(new PopStateEvent('popstate'));
       }, 900);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to create your account.';
-      if (message.toLowerCase().includes('email not confirmed')) {
+      if (isNetworkFetchError(message)) {
         sessionStorage.setItem(PENDING_SIGNUP_PROFILE_KEY, JSON.stringify(pendingSignupProfile));
-        startResendCooldown(60);
-        setConfirmationNotice('Your account needs email verification. Check your inbox, then log in to continue.');
-        return;
-      }
-      if (isEmailRateLimited(message)) {
-        const retryAfter = getRetryDelaySeconds(message);
-        startResendCooldown(retryAfter);
-        setConfirmationNotice(`Email rate limit reached. Please wait ${retryAfter}s before requesting another verification email.`);
-        return;
       }
       setSubmitError(message);
     } finally {
@@ -552,7 +536,8 @@ export function GetStarted({ initialPlanId, onComplete }: GetStartedProps) {
             <Button
               type="button"
               onClick={() => {
-                window.location.href = '/login';
+                window.history.pushState({}, '', '/login');
+                window.dispatchEvent(new PopStateEvent('popstate'));
               }}
               className="h-9 bg-gradient-to-r from-[#FF6B00] to-[#FF8C00] hover:from-[#FF8C00] hover:to-[#FFD600] text-white"
             >

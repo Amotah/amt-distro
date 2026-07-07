@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { initializeDefaultAdminAccount } from '../utils/admin-bootstrap';
 import { Button } from './ui/button';
 import { Loader2, Shield, CheckCircle, AlertCircle } from 'lucide-react';
 
@@ -14,25 +14,16 @@ export function InitAdminButton() {
     setMessage('');
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-79198001/init-admin`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${publicAnonKey}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      );
+      const result = await initializeDefaultAdminAccount();
 
-      const data = await response.json();
-
-      if (response.ok && data.success) {
+      if (result.success) {
         setStatus('success');
-        setMessage('Admin user created successfully! You can now login with: admin / admin');
+        const username = result.credentials?.username || 'admin';
+        const password = result.credentials?.password || 'admin';
+        setMessage(`Admin user created successfully! You can now login with: ${username} / ${password}`);
       } else {
         setStatus('error');
-        setMessage(data.error || 'Failed to initialize admin user');
+        setMessage(result.error || 'Failed to initialize admin user');
       }
     } catch (error: any) {
       setStatus('error');

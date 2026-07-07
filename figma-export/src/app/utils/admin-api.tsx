@@ -1,12 +1,13 @@
-import { projectId, publicAnonKey } from '../../../utils/supabase/info';
+import { publicAnonKey } from '../../../utils/supabase/info';
 import { getSupabaseClient } from '../../../utils/supabase/client';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
 /**
  * Admin API Client
  * Handles all admin-related API calls with proper authentication
  */
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 
 // Get auth token — always use the live Supabase session so we never send expired tokens.
 // Falls back to sessionStorage for backward compatibility if no active session.
@@ -93,6 +94,833 @@ export async function updateAdminRole(userId: string, role: AdminUser['role']): 
 
 export async function deleteAdminUser(userId: string): Promise<void> {
   await apiCall(`/admin/admin-users/${userId}`, { method: 'DELETE' });
+}
+
+// ==================== INTERNAL USERS (Staff) MANAGEMENT ====================
+
+export type InternalUserRole = 'superadmin' | 'system_admin' | 'admin_finance' | 'admin_content' | 'admin_support' | 'admin_fraud' | 'admin_analytics' | 'admin_operations' | 'hr_manager' | 'hr_specialist' | 'hr_coordinator' | 'payroll_manager' | 'recruitment_officer' | 'staff';
+export type PermissionLevel = 'inputter' | 'authorizer' | 'viewer' | 'admin';
+
+export interface InternalUser {
+  id: string;
+  userId?: string;
+  email: string;
+  fullName: string;
+  role: InternalUserRole;
+  department: string;
+  status: 'active' | 'inactive' | 'suspended';
+  permissionMatrix: Record<string, PermissionLevel>; // Maps permission to level
+  customPermissions: string[];
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  lastActiveAt?: string;
+  phone?: string;
+  directManager?: string;
+}
+
+export interface PermissionMatrixEntry {
+  permission: string;
+  inputter: boolean;
+  authorizer: boolean;
+  description: string;
+}
+
+export interface PermissionMatrixConfig {
+  roleId: string;
+  roleName: string;
+  permissions: PermissionMatrixEntry[];
+  lastUpdatedAt: string;
+  lastUpdatedBy: string;
+}
+
+export interface CreateInternalUserInput {
+  email: string;
+  fullName: string;
+  role: InternalUserRole;
+  department: string;
+  phone?: string;
+  directManager?: string;
+  permissionMatrix?: Record<string, PermissionLevel>;
+  customPermissions?: string[];
+  defaultPassword?: string;
+}
+
+export async function createInternalUser(data: CreateInternalUserInput): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>('/admin/internal-users', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.internalUser;
+}
+
+export async function getInternalUsers(department?: string): Promise<InternalUser[]> {
+  const query = department ? `?department=${encodeURIComponent(department)}` : '';
+  const result = await apiCall<{ internalUsers: InternalUser[] }>(`/admin/internal-users${query}`);
+  return result.internalUsers;
+}
+
+export async function getInternalUser(userId: string): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}`);
+  return result.internalUser;
+}
+
+export async function updateInternalUser(userId: string, updates: Partial<CreateInternalUserInput>): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+  return result.internalUser;
+}
+
+export async function updateInternalUserPermissions(userId: string, permissionMatrix: Record<string, PermissionLevel>): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}/permissions`, {
+    method: 'PUT',
+    body: JSON.stringify({ permissionMatrix }),
+  });
+  return result.internalUser;
+}
+
+export async function activateInternalUser(userId: string): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}/activate`, {
+    method: 'PUT',
+  });
+  return result.internalUser;
+}
+
+export async function deactivateInternalUser(userId: string): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}/deactivate`, {
+    method: 'PUT',
+  });
+  return result.internalUser;
+}
+
+export async function deleteInternalUser(userId: string): Promise<void> {
+  await apiCall(`/admin/internal-users/${userId}`, { method: 'DELETE' });
+}
+
+// ==================== PERMISSION MATRIX (Inputter/Authorizer) ====================
+
+export async function getPermissionMatrixConfig(roleId: InternalUserRole): Promise<PermissionMatrixConfig> {
+  const result = await apiCall<{ config: PermissionMatrixConfig }>(`/admin/permission-matrix/${roleId}`);
+  return result.config;
+}
+
+export async function getAllPermissionMatrices(): Promise<PermissionMatrixConfig[]> {
+  const result = await apiCall<{ matrices: PermissionMatrixConfig[] }>('/admin/permission-matrix');
+  return result.matrices;
+}
+
+export async function updatePermissionMatrixEntry(
+  roleId: InternalUserRole,
+  permission: string,
+  data: { inputter?: boolean; authorizer?: boolean; description?: string }
+): Promise<PermissionMatrixEntry> {
+  const result = await apiCall<{ entry: PermissionMatrixEntry }>(`/admin/permission-matrix/${roleId}/${encodeURIComponent(permission)}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return result.entry;
+}
+
+export async function setRolePermissionMatrix(roleId: InternalUserRole, permissions: PermissionMatrixEntry[]): Promise<PermissionMatrixConfig> {
+  const result = await apiCall<{ config: PermissionMatrixConfig }>(`/admin/permission-matrix/${roleId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ permissions }),
+  });
+  return result.config;
+}
+
+// ==================== HR ROLES & PERMISSIONS ====================
+
+export type HRPermission = 
+  | 'hr.staff.view'
+  | 'hr.staff.create'
+  | 'hr.staff.edit'
+  | 'hr.staff.delete'
+  | 'hr.staff.activate'
+  | 'hr.staff.deactivate'
+  | 'hr.staff.transfer'
+  | 'hr.staff.promote'
+  | 'hr.leave.view'
+  | 'hr.leave.approve'
+  | 'hr.leave.reject'
+  | 'hr.attendance.view'
+  | 'hr.attendance.mark'
+  | 'hr.attendance.edit'
+  | 'hr.payroll.view'
+  | 'hr.payroll.create'
+  | 'hr.payroll.approve'
+  | 'hr.payroll.process'
+  | 'hr.payroll.release'
+  | 'hr.salary.view'
+  | 'hr.salary.edit'
+  | 'hr.salary.approve'
+  | 'hr.benefits.view'
+  | 'hr.benefits.edit'
+  | 'hr.benefits.approve'
+  | 'hr.recruitment.view'
+  | 'hr.recruitment.create'
+  | 'hr.recruitment.edit'
+  | 'hr.recruitment.approve'
+  | 'hr.recruitment.close'
+  | 'hr.onboarding.view'
+  | 'hr.onboarding.create'
+  | 'hr.onboarding.edit'
+  | 'hr.performance.view'
+  | 'hr.performance.create'
+  | 'hr.performance.review'
+  | 'hr.performance.approve'
+  | 'hr.training.view'
+  | 'hr.training.create'
+  | 'hr.training.approve'
+  | 'hr.reports.view'
+  | 'hr.reports.export'
+  | 'hr.audit.view'
+  | 'hr.settings.manage';
+
+export const HR_PERMISSIONS: HRPermission[] = [
+  'hr.staff.view',
+  'hr.staff.create',
+  'hr.staff.edit',
+  'hr.staff.delete',
+  'hr.staff.activate',
+  'hr.staff.deactivate',
+  'hr.staff.transfer',
+  'hr.staff.promote',
+  'hr.leave.view',
+  'hr.leave.approve',
+  'hr.leave.reject',
+  'hr.attendance.view',
+  'hr.attendance.mark',
+  'hr.attendance.edit',
+  'hr.payroll.view',
+  'hr.payroll.create',
+  'hr.payroll.approve',
+  'hr.payroll.process',
+  'hr.payroll.release',
+  'hr.salary.view',
+  'hr.salary.edit',
+  'hr.salary.approve',
+  'hr.benefits.view',
+  'hr.benefits.edit',
+  'hr.benefits.approve',
+  'hr.recruitment.view',
+  'hr.recruitment.create',
+  'hr.recruitment.edit',
+  'hr.recruitment.approve',
+  'hr.recruitment.close',
+  'hr.onboarding.view',
+  'hr.onboarding.create',
+  'hr.onboarding.edit',
+  'hr.performance.view',
+  'hr.performance.create',
+  'hr.performance.review',
+  'hr.performance.approve',
+  'hr.training.view',
+  'hr.training.create',
+  'hr.training.approve',
+  'hr.reports.view',
+  'hr.reports.export',
+  'hr.audit.view',
+  'hr.settings.manage',
+];
+
+export interface HRRole {
+  id: string;
+  name: string;
+  description: string;
+  permissions: HRPermission[];
+  inputterPermissions: HRPermission[];
+  authorizerPermissions: HRPermission[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const DEFAULT_HR_ROLES: Record<string, Omit<HRRole, 'id' | 'createdAt' | 'updatedAt'>> = {
+  hr_manager: {
+    name: 'HR Manager',
+    description: 'Full HR department management with approval authority',
+    permissions: HR_PERMISSIONS,
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.staff.edit', 'hr.staff.transfer', 'hr.staff.promote',
+      'hr.leave.view', 'hr.attendance.view', 'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view',
+      'hr.recruitment.view', 'hr.recruitment.create', 'hr.onboarding.view', 'hr.performance.view',
+      'hr.training.view', 'hr.reports.view', 'hr.audit.view',
+    ],
+    authorizerPermissions: [
+      'hr.staff.activate', 'hr.staff.deactivate', 'hr.leave.approve', 'hr.payroll.approve', 
+      'hr.payroll.process', 'hr.payroll.release', 'hr.salary.approve', 'hr.benefits.approve',
+      'hr.recruitment.approve', 'hr.performance.approve', 'hr.training.approve', 'hr.settings.manage',
+    ],
+  },
+  hr_specialist: {
+    name: 'HR Specialist',
+    description: 'HR operations and staff management',
+    permissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.staff.edit', 'hr.staff.transfer',
+      'hr.leave.view', 'hr.leave.approve', 'hr.attendance.view', 'hr.attendance.mark',
+      'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view', 'hr.recruitment.view',
+      'hr.recruitment.create', 'hr.onboarding.view', 'hr.onboarding.create', 'hr.performance.view',
+      'hr.training.view', 'hr.reports.view', 'hr.audit.view',
+    ],
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.staff.edit', 'hr.staff.transfer',
+      'hr.leave.view', 'hr.attendance.view', 'hr.attendance.mark', 'hr.payroll.view',
+      'hr.salary.view', 'hr.benefits.view', 'hr.recruitment.view', 'hr.recruitment.create',
+      'hr.onboarding.view', 'hr.onboarding.create', 'hr.performance.view', 'hr.training.view',
+      'hr.reports.view',
+    ],
+    authorizerPermissions: ['hr.leave.approve'],
+  },
+  hr_coordinator: {
+    name: 'HR Coordinator',
+    description: 'HR support and data entry',
+    permissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.leave.view', 'hr.attendance.view', 'hr.attendance.mark',
+      'hr.attendance.edit', 'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view',
+      'hr.recruitment.view', 'hr.onboarding.view', 'hr.onboarding.create', 'hr.performance.view',
+      'hr.training.view', 'hr.reports.view',
+    ],
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.leave.view', 'hr.attendance.view',
+      'hr.attendance.mark', 'hr.attendance.edit', 'hr.payroll.view', 'hr.salary.view',
+      'hr.benefits.view', 'hr.recruitment.view', 'hr.onboarding.view', 'hr.onboarding.create',
+      'hr.performance.view', 'hr.training.view', 'hr.reports.view',
+    ],
+    authorizerPermissions: [],
+  },
+  payroll_manager: {
+    name: 'Payroll Manager',
+    description: 'Payroll processing and salary management',
+    permissions: [
+      'hr.staff.view', 'hr.payroll.view', 'hr.payroll.create', 'hr.payroll.approve',
+      'hr.payroll.process', 'hr.payroll.release', 'hr.salary.view', 'hr.salary.edit',
+      'hr.salary.approve', 'hr.attendance.view', 'hr.benefits.view', 'hr.reports.view',
+    ],
+    inputterPermissions: [
+      'hr.staff.view', 'hr.payroll.view', 'hr.payroll.create', 'hr.salary.view',
+      'hr.salary.edit', 'hr.attendance.view', 'hr.benefits.view', 'hr.reports.view',
+    ],
+    authorizerPermissions: [
+      'hr.payroll.approve', 'hr.payroll.process', 'hr.payroll.release', 'hr.salary.approve',
+    ],
+  },
+  recruitment_officer: {
+    name: 'Recruitment Officer',
+    description: 'Hiring and recruitment management',
+    permissions: [
+      'hr.recruitment.view', 'hr.recruitment.create', 'hr.recruitment.edit',
+      'hr.recruitment.approve', 'hr.onboarding.view', 'hr.onboarding.create',
+      'hr.staff.view', 'hr.reports.view',
+    ],
+    inputterPermissions: [
+      'hr.recruitment.view', 'hr.recruitment.create', 'hr.recruitment.edit',
+      'hr.onboarding.view', 'hr.onboarding.create', 'hr.staff.view', 'hr.reports.view',
+    ],
+    authorizerPermissions: ['hr.recruitment.approve'],
+  },
+};
+
+export async function getHRRoles(): Promise<HRRole[]> {
+  const result = await apiCall<{ roles: HRRole[] }>('/admin/hr/roles');
+  return result.roles;
+}
+
+export async function getHRRole(roleId: string): Promise<HRRole> {
+  const result = await apiCall<{ role: HRRole }>(`/admin/hr/roles/${roleId}`);
+  return result.role;
+}
+
+export async function createHRRole(data: Omit<HRRole, 'id' | 'createdAt' | 'updatedAt'>): Promise<HRRole> {
+  const result = await apiCall<{ role: HRRole }>('/admin/hr/roles', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.role;
+}
+
+export async function updateHRRole(roleId: string, data: Partial<Omit<HRRole, 'id' | 'createdAt' | 'updatedAt'>>): Promise<HRRole> {
+  const result = await apiCall<{ role: HRRole }>(`/admin/hr/roles/${roleId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return result.role;
+}
+
+export async function deleteHRRole(roleId: string): Promise<void> {
+  await apiCall(`/admin/hr/roles/${roleId}`, { method: 'DELETE' });
+}
+
+export async function assignHRRole(userId: string, roleId: string): Promise<InternalUser> {
+  const result = await apiCall<{ internalUser: InternalUser }>(`/admin/internal-users/${userId}/hr-role`, {
+    method: 'PUT',
+    body: JSON.stringify({ roleId }),
+  });
+  return result.internalUser;
+}
+
+// ==================== ACCESS CONTROL & PERMISSION MATRIX ====================
+
+export const ADMIN_PERMISSIONS = [
+  // System Administration
+  'system.settings.view',
+  'system.settings.edit',
+  'system.users.manage',
+  'system.roles.manage',
+  'system.permissions.manage',
+  'system.audit.view',
+  'system.audit.export',
+  'system.database.view',
+  'system.database.backup',
+  'system.database.restore',
+  'system.logs.view',
+  'system.logs.export',
+  'system.email.configure',
+  'system.email.send',
+  'system.integrations.manage',
+  'system.api.manage',
+  'system.security.configure',
+  
+  // Finance Administration
+  'finance.transactions.view',
+  'finance.transactions.create',
+  'finance.transactions.approve',
+  'finance.transactions.reject',
+  'finance.transactions.export',
+  'finance.reports.view',
+  'finance.reports.generate',
+  'finance.accounting.view',
+  'finance.accounting.edit',
+  'finance.reconciliation.view',
+  'finance.reconciliation.approve',
+  'finance.budgets.view',
+  'finance.budgets.create',
+  'finance.budgets.approve',
+  'finance.payments.view',
+  'finance.payments.process',
+  'finance.payments.approve',
+  
+  // Content Administration
+  'content.view',
+  'content.create',
+  'content.edit',
+  'content.delete',
+  'content.approve',
+  'content.reject',
+  'content.publish',
+  'content.unpublish',
+  'content.categories.manage',
+  'content.tags.manage',
+  'content.comments.moderate',
+  'content.reports.view',
+  
+  // Support Administration
+  'support.tickets.view',
+  'support.tickets.create',
+  'support.tickets.edit',
+  'support.tickets.resolve',
+  'support.tickets.close',
+  'support.templates.manage',
+  'support.categories.manage',
+  'support.reports.view',
+  
+  // Fraud Detection
+  'fraud.monitoring.view',
+  'fraud.monitoring.configure',
+  'fraud.alerts.view',
+  'fraud.alerts.investigate',
+  'fraud.alerts.resolve',
+  'fraud.rules.manage',
+  'fraud.reports.view',
+  'fraud.cases.manage',
+  
+  // Analytics
+  'analytics.dashboard.view',
+  'analytics.reports.view',
+  'analytics.reports.generate',
+  'analytics.data.export',
+  'analytics.dimensions.configure',
+  'analytics.metrics.configure',
+  'analytics.alerts.manage',
+  
+  // Operations
+  'operations.monitoring.view',
+  'operations.processes.view',
+  'operations.processes.start',
+  'operations.processes.stop',
+  'operations.queue.view',
+  'operations.queue.manage',
+  'operations.jobs.view',
+  'operations.jobs.retry',
+  'operations.jobs.cancel',
+  'operations.reports.view',
+] as const;
+
+export type AdminPermission = typeof ADMIN_PERMISSIONS[number] | HRPermission;
+
+export interface AdminAccessAction {
+  id: string;
+  userId: string;
+  userRole: InternalUserRole;
+  actionType: 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'execute';
+  permission: AdminPermission;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string;
+  inputtedBy: string;
+  inputtedAt: string;
+  status: 'pending_approval' | 'approved' | 'rejected' | 'executed' | 'failed';
+  approverRole?: InternalUserRole;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  executedAt?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface AdminAccessLog {
+  id: string;
+  userId: string;
+  userRole: InternalUserRole;
+  action: string;
+  permission: AdminPermission;
+  resourceType: string;
+  resourceId: string;
+  status: 'success' | 'denied' | 'error';
+  timestamp: string;
+  ipAddress?: string;
+  userAgent?: string;
+  errorMessage?: string;
+}
+
+export const ADMIN_ROLE_MATRIX: Record<InternalUserRole, {
+  name: string;
+  description: string;
+  inputterPermissions: AdminPermission[];
+  authorizerPermissions: AdminPermission[];
+}> = {
+  superadmin: {
+    name: 'Super Admin',
+    description: 'Can input all admin actions (superadmin inputs, system_admin approves)',
+    inputterPermissions: ADMIN_PERMISSIONS as any as AdminPermission[],
+    authorizerPermissions: [],
+  },
+  system_admin: {
+    name: 'System Admin',
+    description: 'Approves all admin actions inputted by superadmin',
+    inputterPermissions: [
+      'system.audit.view',
+      'system.audit.export',
+      'system.logs.view',
+      'system.logs.export',
+      'analytics.dashboard.view',
+      'analytics.reports.view',
+      'operations.monitoring.view',
+    ],
+    authorizerPermissions: ADMIN_PERMISSIONS as any as AdminPermission[],
+  },
+  admin_finance: {
+    name: 'Finance Admin',
+    description: 'Finance department administrator',
+    inputterPermissions: [
+      'finance.transactions.view',
+      'finance.transactions.create',
+      'finance.transactions.export',
+      'finance.reports.view',
+      'finance.reports.generate',
+      'finance.accounting.view',
+      'finance.accounting.edit',
+      'finance.reconciliation.view',
+      'finance.budgets.view',
+      'finance.budgets.create',
+      'finance.payments.view',
+    ],
+    authorizerPermissions: [
+      'finance.transactions.approve',
+      'finance.transactions.reject',
+      'finance.reconciliation.approve',
+      'finance.budgets.approve',
+      'finance.payments.process',
+      'finance.payments.approve',
+    ],
+  },
+  admin_content: {
+    name: 'Content Admin',
+    description: 'Content management administrator',
+    inputterPermissions: [
+      'content.view',
+      'content.create',
+      'content.edit',
+      'content.categories.manage',
+      'content.tags.manage',
+      'content.reports.view',
+    ],
+    authorizerPermissions: [
+      'content.approve',
+      'content.reject',
+      'content.publish',
+      'content.unpublish',
+      'content.delete',
+    ],
+  },
+  admin_support: {
+    name: 'Support Admin',
+    description: 'Support ticket administrator',
+    inputterPermissions: [
+      'support.tickets.view',
+      'support.tickets.create',
+      'support.tickets.edit',
+      'support.templates.manage',
+      'support.categories.manage',
+      'support.reports.view',
+    ],
+    authorizerPermissions: [
+      'support.tickets.resolve',
+      'support.tickets.close',
+    ],
+  },
+  admin_fraud: {
+    name: 'Fraud Admin',
+    description: 'Fraud detection and investigation administrator',
+    inputterPermissions: [
+      'fraud.monitoring.view',
+      'fraud.alerts.view',
+      'fraud.alerts.investigate',
+      'fraud.reports.view',
+      'fraud.cases.manage',
+    ],
+    authorizerPermissions: [
+      'fraud.monitoring.configure',
+      'fraud.alerts.resolve',
+      'fraud.rules.manage',
+    ],
+  },
+  admin_analytics: {
+    name: 'Analytics Admin',
+    description: 'Analytics and reporting administrator',
+    inputterPermissions: [
+      'analytics.dashboard.view',
+      'analytics.reports.view',
+      'analytics.reports.generate',
+      'analytics.data.export',
+    ],
+    authorizerPermissions: [
+      'analytics.dimensions.configure',
+      'analytics.metrics.configure',
+      'analytics.alerts.manage',
+    ],
+  },
+  admin_operations: {
+    name: 'Operations Admin',
+    description: 'Operations and process administrator',
+    inputterPermissions: [
+      'operations.monitoring.view',
+      'operations.processes.view',
+      'operations.queue.view',
+      'operations.jobs.view',
+      'operations.reports.view',
+    ],
+    authorizerPermissions: [
+      'operations.processes.start',
+      'operations.processes.stop',
+      'operations.queue.manage',
+      'operations.jobs.retry',
+      'operations.jobs.cancel',
+    ],
+  },
+  hr_manager: {
+    name: 'HR Manager',
+    description: 'HR department manager with full HR access and approval authority',
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.staff.edit', 'hr.staff.transfer', 'hr.staff.promote',
+      'hr.leave.view', 'hr.attendance.view', 'hr.attendance.mark', 'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view',
+      'hr.recruitment.view', 'hr.recruitment.create', 'hr.onboarding.view', 'hr.onboarding.create',
+      'hr.performance.view', 'hr.training.view', 'hr.reports.view', 'hr.audit.view',
+    ] as AdminPermission[],
+    authorizerPermissions: [
+      'hr.staff.activate', 'hr.staff.deactivate', 'hr.staff.delete',
+      'hr.leave.approve', 'hr.leave.reject',
+      'hr.payroll.approve', 'hr.payroll.process', 'hr.payroll.release',
+      'hr.salary.approve', 'hr.benefits.approve',
+      'hr.recruitment.approve', 'hr.recruitment.close',
+      'hr.onboarding.edit', 'hr.performance.approve', 'hr.training.approve',
+      'hr.reports.export', 'hr.settings.manage',
+    ] as AdminPermission[],
+  },
+  hr_specialist: {
+    name: 'HR Specialist',
+    description: 'HR operations specialist with approval capabilities for leave and leave requests',
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create', 'hr.staff.edit', 'hr.staff.transfer',
+      'hr.leave.view', 'hr.attendance.view', 'hr.attendance.mark', 'hr.attendance.edit',
+      'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view',
+      'hr.recruitment.view', 'hr.recruitment.create',
+      'hr.onboarding.view', 'hr.onboarding.create', 'hr.performance.view',
+      'hr.training.view', 'hr.reports.view',
+    ] as AdminPermission[],
+    authorizerPermissions: [
+      'hr.leave.approve', 'hr.leave.reject',
+    ] as AdminPermission[],
+  },
+  hr_coordinator: {
+    name: 'HR Coordinator',
+    description: 'HR support and data entry role with input-only permissions',
+    inputterPermissions: [
+      'hr.staff.view', 'hr.staff.create',
+      'hr.leave.view', 'hr.attendance.view', 'hr.attendance.mark', 'hr.attendance.edit',
+      'hr.payroll.view', 'hr.salary.view', 'hr.benefits.view',
+      'hr.recruitment.view', 'hr.onboarding.view', 'hr.onboarding.create',
+      'hr.performance.view', 'hr.training.view', 'hr.reports.view',
+    ] as AdminPermission[],
+    authorizerPermissions: [] as AdminPermission[],
+  },
+  payroll_manager: {
+    name: 'Payroll Manager',
+    description: 'Payroll processing manager with input and approval authority',
+    inputterPermissions: [
+      'hr.staff.view', 'hr.payroll.view', 'hr.payroll.create',
+      'hr.salary.view', 'hr.salary.edit',
+      'hr.attendance.view', 'hr.benefits.view', 'hr.reports.view',
+      'finance.payments.view',
+    ] as AdminPermission[],
+    authorizerPermissions: [
+      'hr.payroll.approve', 'hr.payroll.process', 'hr.payroll.release',
+      'hr.salary.approve',
+      'finance.payments.process', 'finance.payments.approve',
+    ] as AdminPermission[],
+  },
+  recruitment_officer: {
+    name: 'Recruitment Officer',
+    description: 'Recruitment and hiring specialist with recruitment approval authority',
+    inputterPermissions: [
+      'hr.recruitment.view', 'hr.recruitment.create', 'hr.recruitment.edit',
+      'hr.onboarding.view', 'hr.onboarding.create',
+      'hr.staff.view', 'hr.reports.view',
+    ] as AdminPermission[],
+    authorizerPermissions: [
+      'hr.recruitment.approve', 'hr.recruitment.close',
+    ] as AdminPermission[],
+  },
+  staff: {
+    name: 'Staff',
+    description: 'Regular staff member with no admin access',
+    inputterPermissions: [] as AdminPermission[],
+    authorizerPermissions: [] as AdminPermission[],
+  },
+};
+
+// ==================== ACCESS CONTROL API FUNCTIONS ====================
+
+export async function submitAccessAction(data: {
+  actionType: AdminAccessAction['actionType'];
+  permission: AdminPermission;
+  resourceType: string;
+  resourceId: string;
+  resourceName: string;
+  metadata?: Record<string, unknown>;
+}): Promise<AdminAccessAction> {
+  const result = await apiCall<{ action: AdminAccessAction }>('/admin/access-control/actions', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.action;
+}
+
+export async function getPendingAccessActions(): Promise<AdminAccessAction[]> {
+  const result = await apiCall<{ actions: AdminAccessAction[] }>('/admin/access-control/actions/pending');
+  return result.actions;
+}
+
+export async function getAccessActions(filters?: {
+  status?: AdminAccessAction['status'];
+  userId?: string;
+  permission?: AdminPermission;
+  fromDate?: string;
+  toDate?: string;
+}): Promise<AdminAccessAction[]> {
+  const query = new URLSearchParams();
+  if (filters?.status) query.append('status', filters.status);
+  if (filters?.userId) query.append('userId', filters.userId);
+  if (filters?.permission) query.append('permission', filters.permission);
+  if (filters?.fromDate) query.append('fromDate', filters.fromDate);
+  if (filters?.toDate) query.append('toDate', filters.toDate);
+  
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const result = await apiCall<{ actions: AdminAccessAction[] }>(`/admin/access-control/actions${queryString}`);
+  return result.actions;
+}
+
+export async function approveAccessAction(actionId: string, notes?: string): Promise<AdminAccessAction> {
+  const result = await apiCall<{ action: AdminAccessAction }>(`/admin/access-control/actions/${actionId}/approve`, {
+    method: 'POST',
+    body: JSON.stringify({ notes }),
+  });
+  return result.action;
+}
+
+export async function rejectAccessAction(actionId: string, reason: string): Promise<AdminAccessAction> {
+  const result = await apiCall<{ action: AdminAccessAction }>(`/admin/access-control/actions/${actionId}/reject`, {
+    method: 'POST',
+    body: JSON.stringify({ reason }),
+  });
+  return result.action;
+}
+
+export async function getAccessLogs(filters?: {
+  userId?: string;
+  action?: string;
+  status?: AdminAccessLog['status'];
+  fromDate?: string;
+  toDate?: string;
+  limit?: number;
+}): Promise<AdminAccessLog[]> {
+  const query = new URLSearchParams();
+  if (filters?.userId) query.append('userId', filters.userId);
+  if (filters?.action) query.append('action', filters.action);
+  if (filters?.status) query.append('status', filters.status);
+  if (filters?.fromDate) query.append('fromDate', filters.fromDate);
+  if (filters?.toDate) query.append('toDate', filters.toDate);
+  if (filters?.limit) query.append('limit', filters.limit.toString());
+  
+  const queryString = query.toString() ? `?${query.toString()}` : '';
+  const result = await apiCall<{ logs: AdminAccessLog[] }>(`/admin/access-control/logs${queryString}`);
+  return result.logs;
+}
+
+export async function checkPermission(userId: string, permission: AdminPermission): Promise<{ allowed: boolean; reason?: string }> {
+  const result = await apiCall<{ allowed: boolean; reason?: string }>('/admin/access-control/check-permission', {
+    method: 'POST',
+    body: JSON.stringify({ userId, permission }),
+  });
+  return result;
+}
+
+export async function getRolePermissions(role: InternalUserRole): Promise<{
+  role: InternalUserRole;
+  inputterPermissions: AdminPermission[];
+  authorizerPermissions: AdminPermission[];
+}> {
+  const result = await apiCall<{
+    role: InternalUserRole;
+    inputterPermissions: AdminPermission[];
+    authorizerPermissions: AdminPermission[];
+  }>(`/admin/access-control/roles/${role}`);
+  return result;
+}
+
+export async function updateRolePermissions(
+  role: InternalUserRole,
+  data: {
+    inputterPermissions?: AdminPermission[];
+    authorizerPermissions?: AdminPermission[];
+  }
+): Promise<any> {
+  const result = await apiCall(`/admin/access-control/roles/${role}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+  return result;
 }
 
 // ==================== USER MANAGEMENT ====================
@@ -1198,9 +2026,81 @@ export async function getComplianceReport(month?: string): Promise<ComplianceRep
   return apiCall<ComplianceReport>(`/admin/moderation/report${qs}`);
 }
 
+// ==================== ACCOUNTING REPORTS ====================
+
+export interface TrialBalanceReport {
+  reportDate: string;
+  accounts: Array<{
+    code: string;
+    name: string;
+    category: 'assets' | 'liabilities' | 'equity' | 'revenue' | 'expenses';
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+  totalDebits: number;
+  totalCredits: number;
+  totalBalance: number;
+}
+
+export interface BalanceSheetReport {
+  reportDate: string;
+  assets: {
+    current: Array<{code: string; name: string; amount: number}>;
+    fixed: Array<{code: string; name: string; amount: number}>;
+    totalCurrent: number;
+    totalFixed: number;
+    totalAssets: number;
+  };
+  liabilities: {
+    current: Array<{code: string; name: string; amount: number}>;
+    longTerm: Array<{code: string; name: string; amount: number}>;
+    totalCurrent: number;
+    totalLongTerm: number;
+    totalLiabilities: number;
+  };
+  equity: {
+    items: Array<{code: string; name: string; amount: number}>;
+    totalEquity: number;
+  };
+  totalLiabilitiesAndEquity: number;
+}
+
+export interface IncomeStatementReport {
+  period: { startDate: string; endDate: string };
+  revenue: Array<{ code: string; name: string; amount: number }>;
+  totalRevenue: number;
+  expenses: Array<{ code: string; name: string; amount: number }>;
+  totalExpenses: number;
+  netIncome: number;
+}
+
+export async function syncAccountingEntries(): Promise<{ success: boolean; message: string; entriesCreated: number }> {
+  return apiCall<{ success: boolean; message: string; entriesCreated: number }>('/admin/accounting/sync-entries', {
+    method: 'POST',
+  });
+}
+
+export async function getTrialBalanceReport(): Promise<TrialBalanceReport> {
+  return apiCall<TrialBalanceReport>('/admin/accounting/trial-balance');
+}
+
+export async function getBalanceSheetReport(date?: string): Promise<BalanceSheetReport> {
+  const query = date ? `?date=${encodeURIComponent(date)}` : '';
+  return apiCall<BalanceSheetReport>(`/admin/accounting/balance-sheet${query}`);
+}
+
+export async function getIncomeStatementReport(startDate?: string, endDate?: string): Promise<IncomeStatementReport> {
+  const params = new URLSearchParams();
+  if (startDate) params.append('startDate', startDate);
+  if (endDate) params.append('endDate', endDate);
+  const query = params.toString() ? `?${params.toString()}` : '';
+  return apiCall<IncomeStatementReport>(`/admin/accounting/income-statement${query}`);
+}
+
 // ==================== ADMIN SECURITY PANEL ====================
 
-export type SecurityAdminRole = 'superadmin' | 'admin_operations' | 'admin_finance' | 'admin_content' | 'admin_support' | 'admin_fraud' | 'admin_analytics';
+export type SecurityAdminRole = 'superadmin' | 'system_admin' | 'admin_operations' | 'admin_finance' | 'admin_content' | 'admin_support' | 'admin_fraud' | 'admin_analytics' | 'hr_manager' | 'hr_specialist' | 'hr_coordinator' | 'payroll_manager' | 'recruitment_officer';
 export type AdminStatus = 'active' | 'inactive' | 'suspended';
 
 export interface SecurityAdmin {
@@ -1302,12 +2202,69 @@ export type Permission = typeof ALL_PERMISSIONS_LIST[number];
 
 export const ROLE_LABELS: Record<SecurityAdminRole, string> = {
   superadmin: 'Super Admin',
+  system_admin: 'System Admin',
   admin_operations: 'Operations Admin',
   admin_finance: 'Finance Admin',
   admin_content: 'Content Admin',
   admin_support: 'Support Admin',
   admin_fraud: 'Fraud Admin',
   admin_analytics: 'Analytics Admin',
+  hr_manager: 'HR Manager',
+  hr_specialist: 'HR Specialist',
+  hr_coordinator: 'HR Coordinator',
+  payroll_manager: 'Payroll Manager',
+  recruitment_officer: 'Recruitment Officer',
+};
+
+// ── Security Admin Role Permissions Matrix (local reference for UI) ──
+export const SECURITY_ADMIN_ROLE_PERMISSIONS: Record<SecurityAdminRole, string[]> = {
+  superadmin: ALL_PERMISSIONS_LIST, // Super Admin has all permissions
+  system_admin: [
+    'admins.view', 'admins.edit',
+    'system.settings', 'system.logs', 'system.analytics',
+    'users.view', 'reports.view',
+  ],
+  admin_operations: [
+    'users.view', 'releases.view', 'distributions.view', 'distributions.retry',
+    'system.logs', 'reports.view', 'reports.upload',
+  ],
+  admin_finance: [
+    'payments.view', 'payments.approve', 'payments.refund',
+    'royalties.view', 'royalties.approve', 'royalties.manage',
+    'reports.view', 'reports.upload', 'system.logs',
+  ],
+  admin_content: [
+    'releases.view', 'releases.edit', 'releases.approve', 'releases.takedown',
+    'artists.view', 'artists.edit', 'artists.verify',
+    'reports.view', 'system.logs',
+  ],
+  admin_support: [
+    'users.view', 'users.edit', 'users.ban', 'users.verify',
+    'releases.view', 'reports.view', 'system.logs',
+  ],
+  admin_fraud: [
+    'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users',
+    'users.view', 'users.edit', 'reports.view', 'system.logs',
+  ],
+  admin_analytics: [
+    'reports.view', 'reports.upload', 'system.analytics',
+    'users.view', 'artists.view', 'releases.view',
+  ],
+  hr_manager: [
+    'users.view', 'users.edit', 'system.logs', 'reports.view',
+  ],
+  hr_specialist: [
+    'users.view', 'system.logs', 'reports.view',
+  ],
+  hr_coordinator: [
+    'users.view', 'system.logs',
+  ],
+  payroll_manager: [
+    'payments.view', 'payments.approve', 'reports.view', 'system.logs',
+  ],
+  recruitment_officer: [
+    'users.view', 'users.create', 'users.verify', 'reports.view', 'system.logs',
+  ],
 };
 
 // Admin Directory
@@ -1354,7 +2311,15 @@ export async function getSecurityAlerts(): Promise<SecurityAlert[]> {
 
 // Permissions Matrix
 export async function getPermissionsMatrix(): Promise<{ matrix: Record<string, string[]>; allPermissions: string[] }> {
-  return apiCall('/admin/security/permissions-matrix');
+  try {
+    return await apiCall('/admin/security/permissions-matrix');
+  } catch (error) {
+    // Fallback to local permissions matrix when backend endpoint not available
+    return {
+      matrix: SECURITY_ADMIN_ROLE_PERMISSIONS,
+      allPermissions: ALL_PERMISSIONS_LIST as unknown as string[],
+    };
+  }
 }
 
 export async function updatePermissionsMatrix(matrix: Record<string, string[]>): Promise<void> {
@@ -2369,4 +3334,192 @@ export async function bulkIncreaseHRSalary(data: {
       reason: data.reason,
     }),
   });
+}
+
+// ==================== STAFF PORTAL (Internal Users Self-Service) ====================
+
+export type LeaveType = 'annual' | 'sick' | 'personal' | 'parental' | 'unpaid' | 'study' | 'bereavement' | 'medical';
+export type LeaveStatus = 'pending' | 'approved' | 'rejected' | 'cancelled' | 'on_leave';
+
+export interface LeaveApplication {
+  id: string;
+  staffId: string;
+  staffName: string;
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  numberOfDays: number;
+  reason: string;
+  status: LeaveStatus;
+  appliedAt: string;
+  appliedBy: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  attachments?: string[];
+}
+
+export interface Payslip {
+  id: string;
+  staffId: string;
+  staffName: string;
+  payPeriod: string;
+  payDate: string;
+  baseSalary: number;
+  allowances: number;
+  deductions: number;
+  netSalary: number;
+  currency: string;
+  tax: number;
+  insurancePremium?: number;
+  status: 'draft' | 'finalized' | 'paid';
+  downloadUrl?: string;
+  createdAt: string;
+}
+
+export interface Training {
+  id: string;
+  title: string;
+  description: string;
+  category: string;
+  instructor: string;
+  startDate: string;
+  endDate: string;
+  duration: number; // hours
+  location?: string;
+  isOnline: boolean;
+  meetingLink?: string;
+  maxParticipants?: number;
+  currentParticipants: number;
+  certificateTemplate?: string;
+  status: 'scheduled' | 'ongoing' | 'completed' | 'cancelled';
+  tags?: string[];
+}
+
+export interface StaffTrainingEnrollment {
+  id: string;
+  staffId: string;
+  staffName: string;
+  trainingId: string;
+  trainingTitle: string;
+  enrolledAt: string;
+  status: 'enrolled' | 'completed' | 'cancelled' | 'no_show';
+  score?: number;
+  certificateUrl?: string;
+  completedAt?: string;
+  feedback?: string;
+}
+
+export interface LeaveBalance {
+  staffId: string;
+  staffName: string;
+  leaveType: LeaveType;
+  totalAllowed: number;
+  used: number;
+  pending: number;
+  available: number;
+  carryover?: number;
+  expiresAt?: string;
+}
+
+// Staff Portal API Functions
+
+// Leave Management
+export async function applyForLeave(data: {
+  leaveType: LeaveType;
+  startDate: string;
+  endDate: string;
+  reason: string;
+  attachments?: string[];
+}): Promise<LeaveApplication> {
+  const result = await apiCall<{ application: LeaveApplication }>('/staff-portal/leave/apply', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.application;
+}
+
+export async function getMyLeaveApplications(status?: LeaveStatus): Promise<LeaveApplication[]> {
+  const query = status ? `?status=${status}` : '';
+  const result = await apiCall<{ applications: LeaveApplication[] }>(`/staff-portal/leave/applications${query}`);
+  return result.applications;
+}
+
+export async function getLeaveBalance(): Promise<LeaveBalance[]> {
+  const result = await apiCall<{ balances: LeaveBalance[] }>('/staff-portal/leave/balance');
+  return result.balances;
+}
+
+export async function cancelLeaveApplication(applicationId: string): Promise<LeaveApplication> {
+  const result = await apiCall<{ application: LeaveApplication }>(`/staff-portal/leave/applications/${applicationId}/cancel`, {
+    method: 'POST',
+  });
+  return result.application;
+}
+
+// Payslips
+export async function getMyPayslips(year?: number, month?: number): Promise<Payslip[]> {
+  const params = new URLSearchParams();
+  if (year) params.append('year', String(year));
+  if (month) params.append('month', String(month));
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const result = await apiCall<{ payslips: Payslip[] }>(`/staff-portal/payslips${query}`);
+  return result.payslips;
+}
+
+export async function downloadPayslip(payslipId: string): Promise<void> {
+  const token = await getAuthToken();
+  const res = await fetch(`${API_BASE_URL}/staff-portal/payslips/${payslipId}/download`, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).message || `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `payslip-${new Date().toISOString().slice(0, 10)}.pdf`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+export async function getPayslipDetails(payslipId: string): Promise<Payslip> {
+  const result = await apiCall<{ payslip: Payslip }>(`/staff-portal/payslips/${payslipId}`);
+  return result.payslip;
+}
+
+// Trainings
+export async function getAvailableTrainings(): Promise<Training[]> {
+  const result = await apiCall<{ trainings: Training[] }>('/staff-portal/trainings/available');
+  return result.trainings;
+}
+
+export async function getMyTrainings(): Promise<StaffTrainingEnrollment[]> {
+  const result = await apiCall<{ trainings: StaffTrainingEnrollment[] }>('/staff-portal/trainings/my-trainings');
+  return result.trainings;
+}
+
+export async function enrollInTraining(trainingId: string): Promise<StaffTrainingEnrollment> {
+  const result = await apiCall<{ enrollment: StaffTrainingEnrollment }>('/staff-portal/trainings/enroll', {
+    method: 'POST',
+    body: JSON.stringify({ trainingId }),
+  });
+  return result.enrollment;
+}
+
+export async function unenrollFromTraining(enrollmentId: string): Promise<void> {
+  await apiCall(`/staff-portal/trainings/enroll/${enrollmentId}`, { method: 'DELETE' });
+}
+
+export async function submitTrainingFeedback(enrollmentId: string, data: {
+  score: number;
+  feedback: string;
+}): Promise<StaffTrainingEnrollment> {
+  const result = await apiCall<{ enrollment: StaffTrainingEnrollment }>(`/staff-portal/trainings/enroll/${enrollmentId}/feedback`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+  return result.enrollment;
 }

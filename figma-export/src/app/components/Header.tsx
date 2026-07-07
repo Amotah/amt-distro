@@ -1,6 +1,21 @@
-import { Menu, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import {
+  BookOpen,
+  ChevronDown,
+  CircleHelp,
+  Globe,
+  Home,
+  Info,
+  Layers3,
+  LogIn,
+  Megaphone,
+  Menu,
+  Rocket,
+  Tag,
+  Users,
+  X,
+} from 'lucide-react';
 import { Button } from './ui/button';
-import { useState } from 'react';
 import { LANGUAGE_OPTIONS, setLanguage, useLanguage, type SupportedLanguage } from '../utils/i18n';
 
 interface HeaderProps {
@@ -9,24 +24,88 @@ interface HeaderProps {
 
 export function Header({ onNavigate }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [aboutDropdown, setAboutDropdown] = useState(false);
-  const [solutionsDropdown, setSolutionsDropdown] = useState(false);
   const [mobileAboutOpen, setMobileAboutOpen] = useState(false);
   const [mobileSolutionsOpen, setMobileSolutionsOpen] = useState(false);
+  const [aboutDropdown, setAboutDropdown] = useState(false);
+  const [solutionsDropdown, setSolutionsDropdown] = useState(false);
   const { language, t } = useLanguage();
+
+  useEffect(() => {
+    if (!mobileMenuOpen) {
+      document.body.style.removeProperty('overflow');
+      return;
+    }
+
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMobileMenuOpen(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      document.body.style.removeProperty('overflow');
+    };
+  }, [mobileMenuOpen]);
 
   const handleLanguageChange = (languageCode: SupportedLanguage) => {
     setLanguage(languageCode);
+  };
+
+  const closeMobileMenu = () => {
+    setMobileMenuOpen(false);
+    setMobileAboutOpen(false);
+    setMobileSolutionsOpen(false);
   };
 
   const handleNavClick = (page: string) => {
     if (onNavigate) {
       onNavigate(page);
     }
-    setMobileMenuOpen(false);
-    setMobileAboutOpen(false);
-    setMobileSolutionsOpen(false);
+    closeMobileMenu();
   };
+
+  const handleRouteClick = (page: 'login' | 'get-started') => {
+    if (onNavigate) {
+      onNavigate(page);
+    } else {
+      const targetPath = page === 'login' ? '/login' : '/get-started';
+      window.history.pushState({}, '', targetPath);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }
+
+    closeMobileMenu();
+  };
+
+  const handleHashNavigate = (sectionId: string) => {
+    if (onNavigate) {
+      onNavigate('landing');
+    }
+
+    const targetHash = `#${sectionId}`;
+    const nextUrl = `/${targetHash}`;
+    if (window.location.pathname === '/' && window.location.hash === targetHash) {
+      closeMobileMenu();
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      return;
+    }
+
+    window.history.pushState({}, '', nextUrl);
+    closeMobileMenu();
+    window.dispatchEvent(new HashChangeEvent('hashchange'));
+  };
+
+  const currentPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const isActivePath = (paths: string[]) => paths.includes(currentPath);
+
+  const mobileNavItemClass = (isActive = false) =>
+    `mobile-nav-item${isActive ? ' is-active' : ''}`;
+
+  const mobileSubItemClass = (isActive = false) =>
+    `mobile-nav-subitem${isActive ? ' is-active' : ''}`;
 
   const navLinkClass = 'premium-nav-link';
   const dropdownItemClass = 'block w-full text-left px-4 py-2 text-[#C8C8C8] hover:bg-white/10 hover:text-white transition-colors';
@@ -34,7 +113,7 @@ export function Header({ onNavigate }: HeaderProps) {
   return (
     <header className="premium-header">
       <div className="premium-header__inner">
-        <div className="flex items-center justify-between h-14 md:h-[3.6rem]">
+        <div className="hidden h-14 items-center justify-between md:h-[3.6rem] lg:flex">
 
           {/* ── Left: Logo ─────────────────────────────────────────────────── */}
           <div className="flex items-center gap-4">
@@ -119,8 +198,8 @@ export function Header({ onNavigate }: HeaderProps) {
 
             <button onClick={() => handleNavClick('our-partners')} className={navLinkClass}>{t('nav.partners', 'Partners')}</button>
             <button onClick={() => handleNavClick('promotion')} className={navLinkClass}>{t('nav.promotion', 'Promotion')}</button>
-            <a href="/#pricing" className={navLinkClass}>{t('nav.pricing', 'Pricing')}</a>
-            <a href="/#faq" className={navLinkClass}>{t('nav.faq', 'FAQ')}</a>
+            <button onClick={() => handleNavClick('pricing')} className={navLinkClass}>{t('nav.pricing', 'Pricing')}</button>
+            <button onClick={() => handleHashNavigate('faq')} className={navLinkClass}>{t('nav.faq', 'FAQ')}</button>
             <button onClick={() => handleNavClick('blog')} className={navLinkClass}>{t('nav.blog', 'Blog')}</button>
           </nav>
 
@@ -139,132 +218,162 @@ export function Header({ onNavigate }: HeaderProps) {
                 </option>
               ))}
             </select>
-            <Button variant="ghost" className="rounded-full font-semibold text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
-            <Button className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] font-semibold text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
+            <Button variant="ghost" className="rounded-full font-semibold text-white hover:text-[#00E5FF]" onClick={() => handleRouteClick('login')}>{t('nav.signIn', 'Sign In')}</Button>
+            <Button className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] font-semibold text-black hover:opacity-90" onClick={() => handleRouteClick('get-started')}>{t('nav.getStarted', 'Get Started')}</Button>
           </div>
 
-          {/* ── Mobile right: hamburger ──────────────────────────────────── */}
-          <div className="lg:hidden flex items-center gap-1">
-            <button
-              className="rounded-xl border border-white/15 bg-white/[0.04] p-2 text-white"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
         </div>
 
-        {/* Mobile Navigation */}
+        <div className="relative flex h-14 items-center justify-between lg:hidden">
+          <button
+            type="button"
+            className="mobile-header-row__menu-button"
+            onClick={() => setMobileMenuOpen((prev) => !prev)}
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-controls="mobile-site-menu"
+          >
+            {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+          </button>
+
+          <a
+            href="/"
+            onClick={() => handleNavClick('landing')}
+            className="absolute left-1/2 inline-flex -translate-x-1/2 items-center justify-center"
+            aria-label="AMT DISTRO - go to home"
+          >
+            <img src="/brand/amt-distro-wordmark.svg" alt="AMTDISTRO logo" className="mobile-header-row__logo" />
+          </a>
+
+          <button
+            type="button"
+            className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] px-3 py-1.5 text-xs font-semibold text-black"
+            onClick={() => handleRouteClick('get-started')}
+          >
+            Start
+          </button>
+        </div>
+
         {mobileMenuOpen && (
-          <div className="lg:hidden py-4 border-t border-white/12">
-            <nav className="flex flex-col gap-4">
-              <div className="rounded-xl border border-white/12 bg-[#101010]">
-                <button
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
-                  onClick={() => setMobileAboutOpen((prev) => !prev)}
-                >
-                  <span>{t('nav.about', 'About')}</span>
-                  <svg className={`h-4 w-4 transition-transform ${mobileAboutOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {mobileAboutOpen && (
-                  <div className="border-t border-white/10 px-2 py-2">
-                    <button onClick={() => handleNavClick('who-we-are')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Who We Are
-                    </button>
-                    <button onClick={() => handleNavClick('our-partners')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Our Partners
-                    </button>
-                    <button onClick={() => handleNavClick('ceo-message')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Message from CEO
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="rounded-xl border border-white/12 bg-[#101010]">
-                <button
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
-                  onClick={() => setMobileSolutionsOpen((prev) => !prev)}
-                >
-                  <span>{t('nav.solutions', 'Solutions')}</span>
-                  <svg className={`h-4 w-4 transition-transform ${mobileSolutionsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </button>
-                {mobileSolutionsOpen && (
-                  <div className="border-t border-white/10 px-2 py-2">
-                    <button onClick={() => handleNavClick('technology')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Technology
-                    </button>
-                    <button onClick={() => handleNavClick('marketing-solutions')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Marketing
-                    </button>
-                    <button onClick={() => handleNavClick('video-distribution')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Music Video Distribution
-                    </button>
-                    <button onClick={() => handleNavClick('rights-management')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Rights Management
-                    </button>
-                    <button onClick={() => handleNavClick('royalty-advances')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
-                      Royalty Advances
-                    </button>
-                  </div>
-                )}
-              </div>
-              <a
-                href="/#pricing"
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {t('nav.pricing', 'Pricing')}
-              </a>
+          <div
+            className="mobile-nav-backdrop is-open lg:hidden"
+            onClick={closeMobileMenu}
+          >
+            <aside
+              id="mobile-site-menu"
+              className="mobile-nav-panel is-open"
+              onClick={(event) => event.stopPropagation()}
+              aria-label="Mobile navigation"
+            >
+            <div className="mobile-nav-panel__top">
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
-                onClick={() => { handleNavClick('our-partners'); }}
+                type="button"
+                className="mobile-nav-panel__close"
+                onClick={closeMobileMenu}
+                aria-label="Close menu"
               >
-                {t('nav.partners', 'Partners')}
+                <X className="h-5 w-5" />
               </button>
+            </div>
+
+            <nav className="mobile-nav-list">
+              <button className={mobileNavItemClass(isActivePath(['/']))} onClick={() => handleNavClick('landing')}>
+                <Home className="h-4 w-4" />
+                <span>Home</span>
+              </button>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
-                onClick={() => { handleNavClick('promotion'); }}
+                className={mobileNavItemClass(isActivePath(['/who-we-are', '/our-partners', '/ceo-message']))}
+                onClick={() => setMobileAboutOpen((prev) => !prev)}
               >
-                {t('nav.promotion', 'Promotion')}
+                <Info className="h-4 w-4" />
+                <span>{t('nav.about', 'About')}</span>
+                <ChevronDown className={`mobile-nav-chevron ${mobileAboutOpen ? 'is-open' : ''}`} />
               </button>
-              <a
-                href="/#faq"
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {t('nav.faq', 'FAQ')}
-              </a>
+              <div className={`mobile-nav-submenu ${mobileAboutOpen ? 'is-open' : ''}`}>
+                <button className={mobileSubItemClass(isActivePath(['/who-we-are']))} onClick={() => handleNavClick('who-we-are')}>Who We Are</button>
+                <button className={mobileSubItemClass(isActivePath(['/our-partners']))} onClick={() => handleNavClick('our-partners')}>Our Partners</button>
+                <button className={mobileSubItemClass(isActivePath(['/ceo-message']))} onClick={() => handleNavClick('ceo-message')}>Message from CEO</button>
+              </div>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
-                onClick={() => { handleNavClick('blog'); }}
+                className={mobileNavItemClass(isActivePath(['/technology', '/marketing-solutions', '/video-distribution', '/rights-management', '/royalty-advances']))}
+                onClick={() => setMobileSolutionsOpen((prev) => !prev)}
               >
-                {t('nav.blog', 'Blog')}
+                <Layers3 className="h-4 w-4" />
+                <span>{t('nav.solutions', 'Solutions')}</span>
+                <ChevronDown className={`mobile-nav-chevron ${mobileSolutionsOpen ? 'is-open' : ''}`} />
               </button>
-              <div className="pt-2">
-                <label className="mb-1 block text-sm font-medium text-[#B3B3B3]" htmlFor="site-language-mobile">{t('nav.language', 'Language')}</label>
-                <select
-                  id="site-language-mobile"
-                  value={language}
-                  onChange={(event) => handleLanguageChange(event.target.value as SupportedLanguage)}
-                  className="w-full rounded-md border border-white/15 bg-[#111111] px-3 py-2 text-sm font-medium text-[#D6D6D6] outline-none transition-colors focus:border-[#00E5FF]"
-                >
-                  {LANGUAGE_OPTIONS.map((language) => (
-                    <option key={language.code} value={language.code}>
-                      {language.label}
-                    </option>
-                  ))}
-                </select>
+              <div className={`mobile-nav-submenu ${mobileSolutionsOpen ? 'is-open' : ''}`}>
+                <button className={mobileSubItemClass(isActivePath(['/technology']))} onClick={() => handleNavClick('technology')}>Technology</button>
+                <button className={mobileSubItemClass(isActivePath(['/marketing-solutions']))} onClick={() => handleNavClick('marketing-solutions')}>Marketing</button>
+                <button className={mobileSubItemClass(isActivePath(['/video-distribution']))} onClick={() => handleNavClick('video-distribution')}>Music Video Distribution</button>
+                <button className={mobileSubItemClass(isActivePath(['/rights-management']))} onClick={() => handleNavClick('rights-management')}>Rights Management</button>
+                <button className={mobileSubItemClass(isActivePath(['/royalty-advances']))} onClick={() => handleNavClick('royalty-advances')}>Royalty Advances</button>
               </div>
-              <div className="flex flex-col gap-2 pt-2">
-                <Button variant="ghost" className="text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
-                <Button className="bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
-              </div>
+
+              <button className={mobileNavItemClass(isActivePath(['/our-partners']))} onClick={() => handleNavClick('our-partners')}>
+                <Users className="h-4 w-4" />
+                <span>{t('nav.partners', 'Partners')}</span>
+              </button>
+
+              <button className={mobileNavItemClass(isActivePath(['/promotion']))} onClick={() => handleNavClick('promotion')}>
+                <Megaphone className="h-4 w-4" />
+                <span>{t('nav.promotion', 'Promotion')}</span>
+              </button>
+
+              <button className={mobileNavItemClass(isActivePath(['/pricing']))} onClick={() => handleNavClick('pricing')}>
+                <Tag className="h-4 w-4" />
+                <span>{t('nav.pricing', 'Pricing')}</span>
+              </button>
+
+              <button className={mobileNavItemClass(currentPath === '/' && window.location.hash === '#faq')} onClick={() => handleHashNavigate('faq')}>
+                <CircleHelp className="h-4 w-4" />
+                <span>{t('nav.faq', 'FAQ')}</span>
+              </button>
+
+              <button className={mobileNavItemClass(isActivePath(['/blog']))} onClick={() => handleNavClick('blog')}>
+                <BookOpen className="h-4 w-4" />
+                <span>{t('nav.blog', 'Blog')}</span>
+              </button>
+
+              <div className="mobile-nav-divider" />
+
+              <label className="mobile-nav-language-label" htmlFor="site-language-mobile">
+                <Globe className="h-4 w-4" />
+                <span>{t('nav.language', 'Language')}</span>
+              </label>
+              <select
+                id="site-language-mobile"
+                value={language}
+                onChange={(event) => handleLanguageChange(event.target.value as SupportedLanguage)}
+                className="mobile-nav-language-select"
+              >
+                {LANGUAGE_OPTIONS.map((languageOption) => (
+                  <option key={languageOption.code} value={languageOption.code}>
+                    {languageOption.label}
+                  </option>
+                ))}
+              </select>
+
+              <button
+                type="button"
+                className="mobile-nav-signin"
+                onClick={() => handleRouteClick('login')}
+              >
+                <LogIn className="h-4 w-4" />
+                <span>{t('nav.signIn', 'Sign In')}</span>
+              </button>
+
+              <button
+                type="button"
+                className="mobile-nav-get-started"
+                onClick={() => handleRouteClick('get-started')}
+              >
+                <Rocket className="h-4 w-4" />
+                <span>{t('nav.getStarted', 'Get Started')}</span>
+              </button>
             </nav>
+            </aside>
           </div>
         )}
       </div>

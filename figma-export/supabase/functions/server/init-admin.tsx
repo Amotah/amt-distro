@@ -4,12 +4,12 @@ import * as kv from './kv_store.tsx';
 
 /**
  * Initialize Default Admin User
- * Creates a test admin user with username "admin" and password "admin"
+ * Creates a default admin user with username "admin" and password "admin"
  */
 
-const TEST_ADMIN_EMAIL = 'admin@amtdistro.com';
-const TEST_ADMIN_PASSWORD = 'admin';
-const TEST_ADMIN_USERNAME = 'admin';
+const DEFAULT_ADMIN_EMAIL = Deno.env.get('DEFAULT_ADMIN_EMAIL') ?? 'admin@amtdistro.com';
+const DEFAULT_ADMIN_PASSWORD = Deno.env.get('DEFAULT_ADMIN_PASSWORD') ?? 'admin';
+const DEFAULT_ADMIN_USERNAME = Deno.env.get('DEFAULT_ADMIN_USERNAME') ?? 'admin';
 
 export async function initializeDefaultAdmin() {
   try {
@@ -28,7 +28,7 @@ export async function initializeDefaultAdmin() {
       throw listError;
     }
 
-    const existingAdmin = existingUsers?.users?.find(u => u.email === TEST_ADMIN_EMAIL);
+    const existingAdmin = existingUsers?.users?.find(u => u.email === DEFAULT_ADMIN_EMAIL);
 
     let adminUserId: string;
 
@@ -43,9 +43,9 @@ export async function initializeDefaultAdmin() {
         const profile = {
           id: adminUserId,
           userId: adminUserId,
-          email: TEST_ADMIN_EMAIL,
+          email: DEFAULT_ADMIN_EMAIL,
           artistName: 'System Administrator',
-          username: TEST_ADMIN_USERNAME,
+          username: DEFAULT_ADMIN_USERNAME,
           role: 'admin',
           subscriptionTier: 'artist',
           isVerified: true,
@@ -54,8 +54,8 @@ export async function initializeDefaultAdmin() {
         };
         
         await kv.set(`user:${adminUserId}`, profile);
-        await kv.set(`user:email:${TEST_ADMIN_EMAIL}`, adminUserId);
-        await kv.set(`user:username:${TEST_ADMIN_USERNAME}`, adminUserId);
+        await kv.set(`user:email:${DEFAULT_ADMIN_EMAIL}`, adminUserId);
+        await kv.set(`user:username:${DEFAULT_ADMIN_USERNAME}`, adminUserId);
         await kv.set(`user:userId:${adminUserId}`, adminUserId);
         await kv.set(`user:role:admin:${adminUserId}`, true);
         console.log('✅ Admin user profile created in KV store');
@@ -66,17 +66,31 @@ export async function initializeDefaultAdmin() {
           await kv.set(`user:userId:${adminUserId}`, adminUserId);
           console.log('✅ Fixed missing userId mapping');
         }
+
+        // Ensure email and username mappings exist for default admin login paths
+        const emailMapping = await kv.get(`user:email:${DEFAULT_ADMIN_EMAIL}`);
+        if (!emailMapping) {
+          await kv.set(`user:email:${DEFAULT_ADMIN_EMAIL}`, adminUserId);
+        }
+
+        const usernameMapping = await kv.get(`user:username:${DEFAULT_ADMIN_USERNAME}`);
+        if (!usernameMapping) {
+          await kv.set(`user:username:${DEFAULT_ADMIN_USERNAME}`, adminUserId);
+        }
+
+        await kv.set(`user:role:admin:${adminUserId}`, true);
       }
     } else {
       // Create the test admin user in Supabase Auth
       console.log('📝 Creating test admin user in Supabase Auth...');
       const { data, error } = await supabase.auth.admin.createUser({
-        email: TEST_ADMIN_EMAIL,
-        password: TEST_ADMIN_PASSWORD,
+        email: DEFAULT_ADMIN_EMAIL,
+        password: DEFAULT_ADMIN_PASSWORD,
         email_confirm: true, // Auto-confirm email
         user_metadata: {
           artistName: 'System Administrator',
-          username: TEST_ADMIN_USERNAME,
+          username: DEFAULT_ADMIN_USERNAME,
+          role: 'admin',
         },
       });
 
@@ -100,9 +114,9 @@ export async function initializeDefaultAdmin() {
       const userProfile = {
         id: adminUserId,
         userId: adminUserId,
-        email: TEST_ADMIN_EMAIL,
+        email: DEFAULT_ADMIN_EMAIL,
         artistName: 'System Administrator',
-        username: TEST_ADMIN_USERNAME,
+        username: DEFAULT_ADMIN_USERNAME,
         role: 'admin',
         subscriptionTier: 'artist',
         isVerified: true,
@@ -111,8 +125,8 @@ export async function initializeDefaultAdmin() {
       };
 
       await kv.set(`user:${adminUserId}`, userProfile);
-      await kv.set(`user:email:${TEST_ADMIN_EMAIL}`, adminUserId);
-      await kv.set(`user:username:${TEST_ADMIN_USERNAME}`, adminUserId);
+      await kv.set(`user:email:${DEFAULT_ADMIN_EMAIL}`, adminUserId);
+      await kv.set(`user:username:${DEFAULT_ADMIN_USERNAME}`, adminUserId);
       await kv.set(`user:userId:${adminUserId}`, adminUserId); // Fix: Add this mapping
       await kv.set(`user:role:admin:${adminUserId}`, true);
       console.log('✅ Test admin user profile created in KV store');
@@ -122,17 +136,20 @@ export async function initializeDefaultAdmin() {
     const existingAdminRecord = await kv.get(`admin:user:${adminUserId}`);
 
     if (existingAdminRecord) {
-      console.log('✅ Test admin record already exists');
+      // Ensure existing default admin is always synced to current superadmin permissions.
+      await adminService.updateAdminRole(adminUserId, 'superadmin', 'system');
+
+      console.log('✅ Test admin record already exists (permissions synced to superadmin defaults)');
       console.log('');
       console.log('╔════════════════════════════════════════════════════════╗');
       console.log('║          ADMIN ALREADY INITIALIZED                     ║');
       console.log('╠════════════════════════════════════════════════════════╣');
-      console.log('║  Username: admin                                       ║');
-      console.log('║  Email:    admin@amtdistro.com                        ║');
-      console.log('║  Password: admin                                       ║');
+      console.log(`║  Username: ${DEFAULT_ADMIN_USERNAME.padEnd(43)}║`);
+      console.log(`║  Email:    ${DEFAULT_ADMIN_EMAIL.padEnd(43)}║`);
+      console.log(`║  Password: ${DEFAULT_ADMIN_PASSWORD.padEnd(43)}║`);
       console.log('║  Role:     Super Admin                                ║');
       console.log('╠════════════════════════════════════════════════════════╣');
-      console.log('║  Access:   http://localhost:5173/#login               ║');
+      console.log('║  Access:   http://localhost:5173/admin/login          ║');
       console.log('╚════════════════════════════════════════════════════════╝');
       console.log('');
       return;
@@ -152,12 +169,12 @@ export async function initializeDefaultAdmin() {
     console.log('╔════════════════════════════════════════════════════════╗');
     console.log('║          TEST ADMIN CREDENTIALS                        ║');
     console.log('╠════════════════════════════════════════════════════════╣');
-    console.log('║  Username: admin                                       ║');
-    console.log('║  Email:    admin@amtdistro.com                        ║');
-    console.log('║  Password: admin                                       ║');
+    console.log(`║  Username: ${DEFAULT_ADMIN_USERNAME.padEnd(43)}║`);
+    console.log(`║  Email:    ${DEFAULT_ADMIN_EMAIL.padEnd(43)}║`);
+    console.log(`║  Password: ${DEFAULT_ADMIN_PASSWORD.padEnd(43)}║`);
     console.log('║  Role:     Super Admin                                ║');
     console.log('╠════════════════════════════════════════════════════════╣');
-    console.log('║  Access:   http://localhost:5173/#login               ║');
+    console.log('║  Access:   http://localhost:5173/admin/login          ║');
     console.log('╚════════════════════════════════════════════════════════╝');
     console.log('');
   } catch (error) {

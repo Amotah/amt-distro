@@ -39,6 +39,7 @@ import {
   type SmartLinkClickStorageRecord,
   type SmartLinkStorageRecord,
 } from '../../utils/smart-links-storage';
+import { BACKEND_API_BASE_URL } from '../../utils/backend-api-base';
 
 const PLATFORM_COLORS = ['#1DB954', '#FA243C', '#FF0000', '#FF9900', '#A238FF', '#3B82F6', '#FFD600', '#B3B3B3'];
 
@@ -142,7 +143,7 @@ export function SmartLinkAnalyticsView() {
           if (token) {
             const rangeDays = rangeToDays(timeRange);
             const response = await fetch(
-              `https://kzxcjzymzlkxhtaemfne.supabase.co/functions/v1/make-server-79198001/smart-links/${encodeURIComponent(selectedLinkId)}/analytics?range=${rangeDays}`,
+              `${BACKEND_API_BASE_URL}/smart-links/${encodeURIComponent(selectedLinkId)}/analytics?range=${rangeDays}`,
               {
                 method: 'GET',
                 headers: {

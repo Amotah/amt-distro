@@ -15,6 +15,7 @@ import {
   DollarSign,
   CreditCard,
   FileText,
+  LifeBuoy,
   Settings,
   HelpCircle,
   Bell,
@@ -51,6 +52,7 @@ const navItems = [
   { icon: DollarSign, label: 'Earnings', path: '/label-dashboard/earnings' },
   { icon: CreditCard, label: 'Payment History', path: '/label-dashboard/payment-history' },
   { icon: AlertTriangle, label: 'My Disputes', path: '/label-dashboard/disputes' },
+  { icon: LifeBuoy, label: 'Support', path: '/label-dashboard/support' },
   { icon: CreditCard, label: 'Subscription', path: '/label-dashboard/subscription' },
   { icon: FileText, label: 'Reports', path: '/label-dashboard/reports' },
   { icon: Users, label: 'Revenue Management', path: '/label-dashboard/revenue-management' },
@@ -226,7 +228,7 @@ export function LabelDashboardLayout({ onLogout }: LabelDashboardLayoutProps) {
         {/* Help Section */}
         <div className="border-t border-[#FF6B00]/20 p-3">
           <Link
-            to="/contact"
+            to="/label-dashboard/support"
             className="flex w-full items-center gap-3 rounded-lg px-3.5 py-2.5 text-[#B3B3B3] transition-colors hover:bg-white/5 hover:text-white"
           >
             <HelpCircle className="h-[18px] w-[18px]" />

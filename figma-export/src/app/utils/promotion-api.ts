@@ -1,7 +1,7 @@
-import { projectId } from '../../../utils/supabase/info';
 import { getStoredAccessToken } from './auth-session';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 
 export type PromoPlanId = '1-week' | '2-weeks' | '4-weeks';
 export type PromotionStatus = 'pending_payment' | 'active' | 'completed';

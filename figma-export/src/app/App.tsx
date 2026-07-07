@@ -2,7 +2,9 @@ import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { RouterProvider } from 'react-router';
 import { Toaster, toast } from 'sonner';
 import { Header } from './components/Header';
+import { PublicBreadcrumb } from './components/PublicBreadcrumb';
 import { Footer } from './components/Footer';
+import { SkipLink } from './components/SkipLink';
 import { RouteTransitionLoader } from './components/RouteTransitionLoader';
 import { createDashboardRouter } from './dashboard-routes';
 import { createLabelDashboardRouter } from './label-dashboard-routes';
@@ -150,6 +152,21 @@ function getStoredDashboardMode(nextRole?: string | null) {
 
 function withPublicSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
+}
+
+function PublicHomeButton() {
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        window.history.pushState({}, '', '/');
+        window.dispatchEvent(new PopStateEvent('popstate'));
+      }}
+      className="fixed left-4 top-4 z-50 rounded-full border border-white/20 bg-[#111111]/90 px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] text-white hover:border-[#FF6B00]/60 hover:text-[#FFD600]"
+    >
+      Back Home
+    </button>
+  );
 }
 
 export default function App() {
@@ -412,38 +429,32 @@ export default function App() {
     };
   }, [currentView, isAuthenticated]);
 
-  const handleLogin = (userRole: string, userId: string) => {
+  const handleLogin = (userRole: string, userId: string, dashboardPath?: string) => {
     setIsAuthenticated(true);
     setVerificationNotice('');
     setVerificationError('');
     void checkEmailVerification();
-    
-    /**
-     * Role-based routing:
-     * - artist → /dashboard (normal dashboard)
-     * - partner → /label-dashboard (partner dashboard)
-     * - admin → /admin (admin dashboard)
-     * - superadmin → /admin (admin dashboard with full control)
-     */
-    if (userRole === 'admin') {
-      // Admin/SuperAdmin user - navigate to admin dashboard
-      setIsAdminMode(true);
-      setCurrentUserRole(userRole);
-      window.history.pushState({}, '', '/admin');
-    } else if (userRole === 'partner' || window.sessionStorage.getItem('user_subscription_tier') === 'partner') {
-      setIsAdminMode(false);
-      setCurrentUserRole('partner');
-      window.history.pushState({}, '', '/label-dashboard');
-    } else if (userRole === 'artist') {
-      setIsAdminMode(false);
-      setCurrentUserRole(userRole);
-      window.history.pushState({}, '', '/dashboard');
-    } else {
-      // Default fallback to dashboard
-      setIsAdminMode(false);
-      setCurrentUserRole(userRole);
-      window.history.pushState({}, '', '/dashboard');
-    }
+
+    const normalizedRole = userRole === 'partner' ? 'label' : userRole;
+    sessionStorage.setItem('user_role', normalizedRole);
+
+    const shouldOpenAdmin = normalizedRole === 'admin' || normalizedRole === 'superadmin';
+    setIsAdminMode(shouldOpenAdmin);
+    setCurrentUserRole(normalizedRole);
+
+    const fallbackPath = shouldOpenAdmin
+      ? '/admin'
+      : getDashboardPathForMode(
+        getEffectiveDashboardMode({
+          role: normalizedRole,
+          subscriptionTier: window.sessionStorage.getItem('user_subscription_tier'),
+        }),
+        window.location.pathname,
+      );
+
+    const targetPath = dashboardPath || fallbackPath;
+    window.history.pushState({}, '', targetPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
   };
 
   const handleSelectPublicPlan = (planId: string) => {
@@ -544,6 +555,7 @@ export default function App() {
   // Create admin router with useMemo to prevent recreation
   const adminRouter = useMemo(() => createAdminRouter(), []);
 
+  /* DISABLED: Email verification check - will be enabled later
   if (isAuthenticated && emailVerificationStatus === 'unverified') {
     return (
       <div className="min-h-screen bg-[#0A0A0A] text-white flex items-center justify-center p-6">
@@ -593,6 +605,7 @@ export default function App() {
       </div>
     );
   }
+  */
 
   // Admin Panel - Render admin routes
   if (isAdminMode) {
@@ -618,6 +631,7 @@ export default function App() {
   if (currentView === 'login') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(<Login onLogin={handleLogin} />)}
         <Toaster position="top-right" richColors closeButton />
       </div>
@@ -627,6 +641,7 @@ export default function App() {
   if (currentView === 'forgot-password') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(
           <ForgotPassword
             onBack={() => {
@@ -643,6 +658,7 @@ export default function App() {
   if (currentView === 'get-started') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(<GetStarted initialPlanId={selectedPlan.id} onComplete={handleSignupComplete} />)}
         <Toaster position="top-right" richColors closeButton />
       </div>
@@ -653,6 +669,7 @@ export default function App() {
   if (currentView === 'payment') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(
           <PaymentPage
             selectedPlan={selectedPlan}
@@ -669,6 +686,7 @@ export default function App() {
   if (currentView === 'payment-success') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(<PaymentSuccess selectedPlan={selectedPlan} onContinue={handlePaymentSuccess} />)}
         <Toaster position="top-right" richColors closeButton />
       </div>
@@ -679,6 +697,7 @@ export default function App() {
   if (currentView === 'payment-failed') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(<PaymentFailed onRetry={handlePaymentRetry} onCancel={handlePaymentCancel} />)}
         <Toaster position="top-right" richColors closeButton />
       </div>
@@ -689,6 +708,7 @@ export default function App() {
   if (currentView === 'payment-rejected') {
     return (
       <div className="min-h-screen bg-[#0A0A0A]">
+        <PublicHomeButton />
         {withPublicSuspense(<PaymentRejected onRetry={handlePaymentRetry} onCancel={handlePaymentCancel} />)}
         <Toaster position="top-right" richColors closeButton />
       </div>
@@ -698,8 +718,10 @@ export default function App() {
   // Landing Page
   return (
     <div className="min-h-screen bg-[#0A0A0A]">
+      <SkipLink targetId="main-content" />
       <Header onNavigate={handlePublicNavigate} />
-      <main>
+      <PublicBreadcrumb currentView={currentView} onNavigate={handlePublicNavigate} />
+      <main id="main-content" tabIndex={-1}>
         {currentView === 'landing' && withPublicSuspense(<LandingPage onSelectPlan={handleSelectPublicPlan} />)}
         {currentView === 'who-we-are' && withPublicSuspense(<WhoWeAre />)}
         {currentView === 'our-partners' && withPublicSuspense(<OurPartners />)}

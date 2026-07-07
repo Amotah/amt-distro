@@ -21,6 +21,8 @@ import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
 import * as smartLinksService from "./smart-links-service.tsx";
+import * as supportService from "./support-service.tsx";
+import * as emailService from "./email-service.tsx";
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -4817,6 +4819,61 @@ app.post('/make-server-79198001/admin/accounting/auto-entries/generate', verifyA
   }
 });
 
+// ==================== ACCOUNTING REPORTS ====================
+
+app.post('/make-server-79198001/admin/accounting/sync-entries', verifyAuth, verifyAdmin, requirePermission('payments.approve'), async (c) => {
+  try {
+    const actorId = c.get('userId') as string;
+    const result = await accountingService.generateAutoEntries(actorId);
+    
+    await adminService.logAdminAction(actorId, 'sync', 'accounting-entries', 'batch', {
+      entriesCreated: result.created,
+    });
+
+    return c.json({ 
+      success: true, 
+      entriesCreated: result.created, 
+      message: `${result.created} accounting entries synchronized` 
+    });
+  } catch (error) {
+    console.error('Error syncing accounting entries:', error);
+    return c.json({ error: `Failed to sync accounting entries: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/accounting/trial-balance', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
+  try {
+    const report = await accountingService.getTrialBalance();
+    return c.json(report);
+  } catch (error) {
+    console.error('Error generating trial balance report:', error);
+    return c.json({ error: `Failed to generate trial balance report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/accounting/balance-sheet', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
+  try {
+    const date = c.req.query('date');
+    const report = await accountingService.getBalanceSheet(date);
+    return c.json(report);
+  } catch (error) {
+    console.error('Error generating balance sheet report:', error);
+    return c.json({ error: `Failed to generate balance sheet report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, verifyAdmin, requirePermission('reports.view'), async (c) => {
+  try {
+    const startDate = c.req.query('startDate');
+    const endDate = c.req.query('endDate');
+    const report = await accountingService.getIncomeStatement(startDate, endDate);
+    return c.json(report);
+  } catch (error) {
+    console.error('Error generating income statement report:', error);
+    return c.json({ error: `Failed to generate income statement report: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════════════════
 // ADMIN SECURITY PANEL ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -7147,5 +7204,480 @@ app.get("/make-server-79198001/smart-links/:linkId/analytics", verifyAuth, async
 
 // (Exported so callers within this module can reuse it)
 export { sendNotification };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin API Routes
+// ─────────────────────────────────────────────────────────────────────────────
+
+// GET /admin/users — get all admin users
+app.get('/make-server-79198001/admin/users', verifyAuth, async (c) => {
+  try {
+    const admins = await adminService.getAllAdminUsers();
+    return c.json({ admins });
+  } catch (error) {
+    console.error('Error fetching admin users:', error);
+    return c.json({ error: `Failed to fetch admin users: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /admin/users/:userId — get specific admin user
+app.get('/make-server-79198001/admin/users/:userId', verifyAuth, async (c) => {
+  try {
+    const userId = c.req.param('userId');
+    const admin = await adminService.getAdminByUserId(userId);
+    
+    if (!admin) {
+      return c.json({ error: 'Admin user not found' }, 404);
+    }
+    
+    return c.json({ adminUser: admin });
+  } catch (error) {
+    console.error('Error fetching admin user:', error);
+    return c.json({ error: `Failed to fetch admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /admin/users — create admin user
+app.post('/make-server-79198001/admin/users', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.userId || typeof body.userId !== 'string') {
+      return c.json({ error: 'userId is required' }, 400);
+    }
+
+    if (!body.role || typeof body.role !== 'string') {
+      return c.json({ error: 'role is required' }, 400);
+    }
+
+    const admin = await adminService.createAdminUser(
+      body.userId,
+      body.role,
+      userId,
+      body.department
+    );
+
+    return c.json({ adminUser: admin });
+  } catch (error) {
+    console.error('Error creating admin user:', error);
+    return c.json({ error: `Failed to create admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// PUT /admin/users/:userId/role — update admin role
+app.put('/make-server-79198001/admin/users/:userId/role', verifyAuth, async (c) => {
+  try {
+    const currentUserId = c.get('userId');
+    const targetUserId = c.req.param('userId');
+    const body = await c.req.json();
+
+    if (!body.role || typeof body.role !== 'string') {
+      return c.json({ error: 'role is required' }, 400);
+    }
+
+    const admin = await adminService.updateAdminRole(targetUserId, body.role, currentUserId);
+    
+    if (!admin) {
+      return c.json({ error: 'Admin user not found' }, 404);
+    }
+
+    return c.json({ adminUser: admin });
+  } catch (error) {
+    console.error('Error updating admin role:', error);
+    return c.json({ error: `Failed to update admin role: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// DELETE /admin/users/:userId — delete admin user
+app.delete('/make-server-79198001/admin/users/:userId', verifyAuth, async (c) => {
+  try {
+    const currentUserId = c.get('userId');
+    const targetUserId = c.req.param('userId');
+
+    await adminService.deleteAdminUser(targetUserId, currentUserId);
+    
+    return c.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting admin user:', error);
+    return c.json({ error: `Failed to delete admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ==================== SUPPORT TICKET ROUTES ====================
+
+// POST /support/tickets - Create a new support ticket (public or authenticated)
+app.post('/make-server-79198001/support/tickets', async (c) => {
+  try {
+    const body = await c.req.json();
+    const { subject, category, message, priority } = body;
+
+    // Get user info if authenticated
+    let userId: string | undefined;
+    let userName: string | undefined;
+    let userRole: string | undefined;
+    let userEmail: string = body.email;
+
+    try {
+      // Try to get authenticated user info
+      const token = c.req.header('Authorization')?.replace('Bearer ', '');
+      if (token && token !== 'fallback-admin-token') {
+        const supabase = createClient(
+          Deno.env.get('SUPABASE_URL') || '',
+          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
+        );
+        
+        // Get basic user info from context if available
+        userId = c.get('userId');
+        userEmail = c.get('userEmail') || userEmail;
+        userName = c.get('userName');
+        userRole = c.get('userRole');
+      }
+    } catch (err) {
+      // User not authenticated - that's okay for support tickets
+      console.log('Support ticket created by non-authenticated user');
+    }
+
+    if (!subject || !category || !message || !userEmail) {
+      return c.json({ error: 'Missing required fields: subject, category, message, email' }, 400);
+    }
+
+    // Create the ticket
+    const ticket = await supportService.createSupportTicket(
+      userEmail,
+      userId,
+      userName,
+      userRole,
+      subject,
+      category,
+      message,
+      priority || 'normal'
+    );
+
+    // Send confirmation email to user
+    await emailService.sendTicketCreationEmail(ticket);
+
+    // Notify admins
+    await emailService.sendNewTicketNotificationToAdmins(ticket);
+
+    return c.json({ ticket, message: 'Support ticket created successfully' }, 201);
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    return c.json({ error: `Failed to create support ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /support/tickets - Get all tickets for authenticated user
+app.get('/make-server-79198001/support/tickets', async (c) => {
+  try {
+    const userId = c.get('userId');
+    const userEmail = c.get('userEmail') || c.get('email');
+
+    let tickets = [];
+
+    // Get tickets by user ID if authenticated
+    if (userId) {
+      tickets = await supportService.getUserSupportTickets(userId);
+    }
+    // Otherwise get by email
+    else if (userEmail) {
+      tickets = await supportService.getEmailSupportTickets(userEmail);
+    }
+    // If neither, return empty list
+    else {
+      return c.json({ tickets: [], message: 'Not authenticated' }, 200);
+    }
+
+    return c.json({ tickets }, 200);
+  } catch (error) {
+    console.error('Error fetching support tickets:', error);
+    return c.json({ error: `Failed to fetch support tickets: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /support/tickets/:ticketId - Get a specific ticket
+app.get('/make-server-79198001/support/tickets/:ticketId', async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const ticket = await supportService.getSupportTicket(ticketId);
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    return c.json({ ticket }, 200);
+  } catch (error) {
+    console.error('Error fetching support ticket:', error);
+    return c.json({ error: `Failed to fetch support ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /support/tickets/:ticketId/messages - Add a message to a ticket
+app.post('/make-server-79198001/support/tickets/:ticketId/messages', async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+    const { message } = body;
+
+    if (!message) {
+      return c.json({ error: 'Message is required' }, 400);
+    }
+
+    const userId = c.get('userId');
+    const userEmail = c.get('userEmail') || c.get('email');
+
+    const ticket = await supportService.addMessageToTicket(
+      ticketId,
+      userId ? 'user' : 'guest',
+      userId || 'guest',
+      userEmail,
+      c.get('userName'),
+      message
+    );
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    // If ticket was waiting on user and they replied, reset status
+    if (userId) {
+      await emailService.sendNewTicketNotificationToAdmins(ticket);
+    }
+
+    return c.json({ ticket }, 200);
+  } catch (error) {
+    console.error('Error adding message to ticket:', error);
+    return c.json({ error: `Failed to add message: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// PATCH /support/tickets/:ticketId/close - Close a ticket
+app.patch('/make-server-79198001/support/tickets/:ticketId/close', async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const ticket = await supportService.updateTicketStatus(ticketId, 'closed');
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    // Send status change email
+    await emailService.sendStatusChangeEmail(ticket, ticket.status);
+
+    return c.json({ ticket }, 200);
+  } catch (error) {
+    console.error('Error closing ticket:', error);
+    return c.json({ error: `Failed to close ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ==================== ADMIN SUPPORT ROUTES ====================
+
+// GET /admin/support/tickets - Get all support tickets (admin)
+app.get('/make-server-79198001/admin/support/tickets', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const tickets = await supportService.getAllSupportTickets();
+    return c.json({ tickets }, 200);
+  } catch (error) {
+    console.error('Error fetching admin support tickets:', error);
+    return c.json({ error: `Failed to fetch tickets: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /admin/support/tickets/:ticketId - Get a specific ticket (admin)
+app.get('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const ticket = await supportService.getSupportTicket(ticketId);
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    return c.json({ ticket }, 200);
+  } catch (error) {
+    console.error('Error fetching support ticket:', error);
+    return c.json({ error: `Failed to fetch ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// PATCH /admin/support/tickets/:ticketId - Update ticket (admin)
+app.patch('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+    const { status, priority, assignedAdminId, assignedAdminEmail, adminNotes } = body;
+
+    let ticket = await supportService.getSupportTicket(ticketId);
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    const oldStatus = ticket.status;
+
+    // Update status if provided
+    if (status) {
+      ticket = await supportService.updateTicketStatus(ticketId, status);
+      
+      // Send status change email to user
+      if (status !== oldStatus) {
+        await emailService.sendStatusChangeEmail(ticket!, oldStatus);
+      }
+    }
+
+    // Update priority if provided
+    if (priority) {
+      ticket = await supportService.updateTicketPriority(ticketId, priority);
+    }
+
+    // Assign to admin if provided
+    if (assignedAdminId && assignedAdminEmail) {
+      ticket = await supportService.assignTicketToAdmin(ticketId, assignedAdminId, assignedAdminEmail);
+    }
+
+    // Set admin notes if provided
+    if (adminNotes !== undefined) {
+      ticket = await supportService.setAdminNotes(ticketId, adminNotes);
+    }
+
+    return c.json({ ticket }, 200);
+  } catch (error) {
+    console.error('Error updating support ticket:', error);
+    return c.json({ error: `Failed to update ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /admin/support/tickets/:ticketId/messages - Admin reply to ticket
+app.post('/make-server-79198001/admin/support/tickets/:ticketId/messages', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+    const { message } = body;
+
+    if (!message) {
+      return c.json({ error: 'Message is required' }, 400);
+    }
+
+    const adminId = c.get('userId');
+    const adminEmail = c.get('userEmail') || c.get('email');
+    const adminName = c.get('userName');
+
+    const ticket = await supportService.addMessageToTicket(
+      ticketId,
+      'admin',
+      adminId,
+      adminEmail,
+      adminName,
+      message
+    );
+
+    if (!ticket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    // Update status to in_progress if it was acknowledged
+    if (ticket.status === 'acknowledged') {
+      await supportService.updateTicketStatus(ticketId, 'in_progress');
+    }
+
+    // Send email to user about admin response
+    const lastMessage = ticket.messages[ticket.messages.length - 1];
+    await emailService.sendAdminResponseEmail(ticket, lastMessage, adminName);
+
+    // Update ticket after sending email
+    const updatedTicket = await supportService.getSupportTicket(ticketId);
+
+    return c.json({ ticket: updatedTicket }, 200);
+  } catch (error) {
+    console.error('Error adding admin message to ticket:', error);
+    return c.json({ error: `Failed to add message: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /admin/support/stats - Get support statistics (admin)
+app.get('/make-server-79198001/admin/support/stats', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const stats = await supportService.getSupportStats();
+    return c.json({ stats }, 200);
+  } catch (error) {
+    console.error('Error fetching support stats:', error);
+    return c.json({ error: `Failed to fetch stats: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ==================== ACCOUNTING REPORTS ROUTES ====================
+
+// POST /admin/accounting/sync-entries - Generate GL entries from real transaction data
+app.post('/make-server-79198001/admin/accounting/sync-entries', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const adminUser = c.get('adminUser');
+    
+    // Generate auto entries from real data
+    const syncResult = await accountingService.generateAutoEntries(adminUser.id);
+    
+    // Recalculate balances
+    await accountingService.recalculateAccountBalances();
+
+    return c.json({ 
+      success: true,
+      entriesCreated: syncResult.created,
+      message: `Synced ${syncResult.created} GL entries from transaction data`
+    });
+  } catch (error) {
+    console.error('Error syncing GL entries:', error);
+    return c.json({ error: 'Failed to sync entries' }, 500);
+  }
+});
+
+// GET /admin/accounting/trial-balance - Get trial balance report
+app.get('/make-server-79198001/admin/accounting/trial-balance', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const adminUser = c.get('adminUser');
+
+    // Auto-sync entries before generating report
+    await accountingService.generateAutoEntries(adminUser.id);
+
+    const report = await accountingService.getTrialBalance();
+    return c.json(report);
+  } catch (error) {
+    console.error('Error fetching trial balance:', error);
+    return c.json({ error: 'Failed to fetch trial balance' }, 500);
+  }
+});
+
+// GET /admin/accounting/balance-sheet - Get balance sheet report
+app.get('/make-server-79198001/admin/accounting/balance-sheet', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const adminUser = c.get('adminUser');
+
+    // Auto-sync entries before generating report
+    await accountingService.generateAutoEntries(adminUser.id);
+
+    const asAtDate = c.req.query('date');
+    const report = await accountingService.getBalanceSheet(asAtDate);
+    return c.json(report);
+  } catch (error) {
+    console.error('Error fetching balance sheet:', error);
+    return c.json({ error: 'Failed to fetch balance sheet' }, 500);
+  }
+});
+
+// GET /admin/accounting/income-statement - Get income statement report
+app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+  try {
+    const adminUser = c.get('adminUser');
+
+    // Auto-sync entries before generating report
+    await accountingService.generateAutoEntries(adminUser.id);
+
+    const startDate = c.req.query('startDate');
+    const endDate = c.req.query('endDate');
+    const report = await accountingService.getIncomeStatement(startDate, endDate);
+    return c.json(report);
+  } catch (error) {
+    console.error('Error fetching income statement:', error);
+    return c.json({ error: 'Failed to fetch income statement' }, 500);
+  }
+});
 
 Deno.serve(app.fetch);

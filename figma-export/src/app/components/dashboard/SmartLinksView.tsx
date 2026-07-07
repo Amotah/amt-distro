@@ -46,6 +46,7 @@ import {
   type SmartLinkClickStorageRecord,
   type SmartLinkStorageRecord,
 } from '../../utils/smart-links-storage';
+import { BACKEND_API_BASE_URL } from '../../utils/backend-api-base';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -235,7 +236,7 @@ export function SmartLinksView() {
     try {
       const token = sessionStorage.getItem('access_token');
       if (token) {
-        await fetch('https://kzxcjzymzlkxhtaemfne.supabase.co/functions/v1/make-server-79198001/smart-links/click', {
+        await fetch(`${BACKEND_API_BASE_URL}/smart-links/click`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
@@ -262,7 +263,6 @@ export function SmartLinksView() {
   /* QR generation -------------------------------------------------- */
   useEffect(() => {
     const slug = view === 'create' ? form.customSlug : selectedLink?.slug;
-    if (!slug) return;
     if ((view === 'create' && step === 3) || (view === 'detail' && showQr)) {
       const url = `https://amtdistro.link/${slug}`;
       if (canvasRef.current) {

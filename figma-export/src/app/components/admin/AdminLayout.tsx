@@ -23,6 +23,7 @@ import {
   Megaphone,
   BadgePercent,
   CreditCard,
+  LifeBuoy,
   Shield,
   Copyright,
   MessageSquareWarning,
@@ -36,6 +37,7 @@ import {
   Briefcase,
   Receipt,
   UserCircle2,
+  BookOpen,
 } from 'lucide-react';
 
 export function AdminLayout() {
@@ -56,6 +58,13 @@ export function AdminLayout() {
       label: 'Overview',
       items: [
         { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+      ],
+    },
+    {
+      label: 'Staff Resources',
+      items: [
+        { path: '/admin/staff-portal-management', label: 'Staff Portal Management', icon: BookOpen },
+        { path: '/staff-portal', label: 'My Staff Portal', icon: UserCircle2 },
       ],
     },
     {
@@ -91,6 +100,9 @@ export function AdminLayout() {
         { path: '/admin/financial-dashboard', label: 'Financial Dashboard', icon: DollarSign, permission: 'payments.view' },
         { path: '/admin/expenses', label: 'Expenses', icon: Receipt, permission: 'payments.view' },
         { path: '/admin/accounting-ledger', label: 'Accounting Ledger', icon: FileText, permission: 'payments.view' },
+        { path: '/admin/trial-balance', label: 'Trial Balance', icon: BarChart3, permission: 'payments.view' },
+        { path: '/admin/balance-sheet', label: 'Balance Sheet', icon: FileText, permission: 'payments.view' },
+        { path: '/admin/income-statement', label: 'Income Statement (P&L)', icon: TrendingUp, permission: 'payments.view' },
         { path: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'payments.view' },
         { path: '/admin/subscriptions', label: 'Subscriptions', icon: DollarSign, permission: 'payments.view' },
         { path: '/admin/coupons', label: 'Coupons', icon: BadgePercent, permission: 'payments.approve' },
@@ -106,6 +118,7 @@ export function AdminLayout() {
         { path: '/admin/hr-dashboard', label: 'HR Dashboard', icon: UserCog, permission: 'users.view' },
         { path: '/admin/payroll', label: 'Payroll Management', icon: Briefcase, permission: 'payments.view' },
         { path: '/admin/admins', label: 'Team Members', icon: UserCircle2, permission: 'admins.view' },
+        { path: '/admin/internal-users', label: 'Internal Users', icon: Shield, permission: 'admins.create', superAdminOnly: true },
       ],
     },
     {
@@ -114,8 +127,10 @@ export function AdminLayout() {
         { path: '/admin/fraud', label: 'Fraud Alerts', icon: AlertTriangle, permission: 'fraud.view' },
         { path: '/admin/copyright', label: 'Copyright', icon: Copyright, permission: 'releases.approve' },
         { path: '/admin/audit-logs', label: 'Audit Logs', icon: Shield, permission: 'system.logs' },
-        { path: '/admin/security', label: 'Access Control', icon: Lock, permission: 'admins.view' },
+        { path: '/admin/access-control', label: 'Access Control', icon: Lock, permission: 'admins.view', superAdminOnly: true },
+        { path: '/admin/security', label: 'Security Settings', icon: Lock, permission: 'admins.view' },
         { path: '/admin/system-config', label: 'System Config', icon: Settings2, permission: 'system.settings' },
+        { path: '/admin/support', label: 'Support Tickets', icon: LifeBuoy, permission: 'support.view' },
       ],
     },
     {

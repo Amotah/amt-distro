@@ -64,6 +64,10 @@ export type Permission =
   // Report Management
   | 'reports.view'
   | 'reports.upload'
+
+  // Support Management
+  | 'support.view'
+  | 'support.manage'
   
   // Admin Management
   | 'admins.view'
@@ -111,6 +115,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage',
     'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund',
     'reports.view', 'reports.upload',
+    'support.view', 'support.manage',
     'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users',
     'admins.view', 'admins.create', 'admins.edit', 'admins.delete',
     'system.settings', 'system.logs', 'system.analytics',
@@ -123,6 +128,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'distributions.view',
     'fraud.view', 'fraud.flag_users',
     'payments.view', 'payments.approve',
+    'support.view', 'support.manage',
     'system.analytics',
   ],
   admin_finance: [
@@ -133,6 +139,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage',
     'payments.view', 'payments.approve', 'payments.cancel',
     'reports.view', 'reports.upload',
+    'support.view', 'support.manage',
     'system.analytics',
   ],
   admin_content: [
@@ -141,6 +148,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'artists.view', 'artists.edit',
     'releases.view', 'releases.edit', 'releases.approve', 'releases.takedown',
     'distributions.view', 'distributions.retry',
+    'support.view', 'support.manage',
     'system.analytics',
   ],
   admin_support: [
@@ -149,6 +157,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'artists.view', 'artists.edit',
     'releases.view',
     'payments.view',
+    'support.view', 'support.manage',
     'fraud.view',
   ],
   admin_fraud: [
@@ -157,6 +166,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'artists.view',
     'releases.view', 'releases.takedown',
     'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users',
+    'support.view', 'support.manage',
     'system.analytics',
   ],
   admin_analytics: [
@@ -167,6 +177,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'distributions.view',
     'payments.view',
     'fraud.view',
+    'support.view',
     'system.analytics', 'system.logs',
   ],
 };

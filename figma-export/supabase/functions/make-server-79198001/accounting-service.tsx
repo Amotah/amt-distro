@@ -688,3 +688,213 @@ export async function generateAutoEntries(actorId: string) {
     entries: created,
   };
 }
+
+// ==================== REPORT GENERATION FUNCTIONS ====================
+
+export interface TrialBalanceReport {
+  reportDate: string;
+  accounts: Array<{
+    code: string;
+    name: string;
+    category: AccountCategory;
+    debit: number;
+    credit: number;
+    balance: number;
+  }>;
+  totalDebits: number;
+  totalCredits: number;
+  totalBalance: number;
+}
+
+export interface BalanceSheetReport {
+  reportDate: string;
+  assets: {
+    current: Array<{code: string; name: string; amount: number}>;
+    fixed: Array<{code: string; name: string; amount: number}>;
+    totalCurrent: number;
+    totalFixed: number;
+    totalAssets: number;
+  };
+  liabilities: {
+    current: Array<{code: string; name: string; amount: number}>;
+    longTerm: Array<{code: string; name: string; amount: number}>;
+    totalCurrent: number;
+    totalLongTerm: number;
+    totalLiabilities: number;
+  };
+  equity: {
+    items: Array<{code: string; name: string; amount: number}>;
+    totalEquity: number;
+  };
+  totalLiabilitiesAndEquity: number;
+}
+
+export interface IncomeStatementReport {
+  period: { startDate: string; endDate: string };
+  revenue: Array<{code: string; name: string; amount: number}>;
+  totalRevenue: number;
+  expenses: Array<{code: string; name: string; amount: number}>;
+  totalExpenses: number;
+  netIncome: number;
+}
+
+export async function getTrialBalance(): Promise<TrialBalanceReport> {
+  await ensureDefaultCOA();
+  await recalculateAccountBalances();
+  const accounts = await loadAllAccounts();
+
+  const sorted = accounts.sort((a, b) => a.code.localeCompare(b.code));
+  let totalDebits = 0;
+  let totalCredits = 0;
+  let totalBalance = 0;
+
+  const reportAccounts = sorted.map((account) => {
+    totalDebits += account.totalDebits;
+    totalCredits += account.totalCredits;
+    totalBalance += account.balance;
+    return {
+      code: account.code,
+      name: account.name,
+      category: account.category,
+      debit: account.totalDebits,
+      credit: account.totalCredits,
+      balance: account.balance,
+    };
+  });
+
+  return {
+    reportDate: nowIso().split('T')[0],
+    accounts: reportAccounts,
+    totalDebits,
+    totalCredits,
+    totalBalance,
+  };
+}
+
+export async function getBalanceSheet(asAtDate?: string): Promise<BalanceSheetReport> {
+  await ensureDefaultCOA();
+  await recalculateAccountBalances();
+  const accounts = await loadAllAccounts();
+
+  const filterDate = asAtDate || nowIso().split('T')[0];
+
+  // Separate assets
+  const currentAssets = accounts.filter((a) => a.category === 'assets' && a.code.startsWith('10')).map((a) => ({
+    code: a.code,
+    name: a.name,
+    amount: a.balance,
+  }));
+  const fixedAssets = accounts.filter((a) => a.category === 'assets' && a.code.startsWith('15')).map((a) => ({
+    code: a.code,
+    name: a.name,
+    amount: a.balance,
+  }));
+
+  const totalCurrentAssets = currentAssets.reduce((sum, a) => sum + a.amount, 0);
+  const totalFixedAssets = fixedAssets.reduce((sum, a) => sum + a.amount, 0);
+
+  // Separate liabilities
+  const currentLiabilities = accounts.filter((a) => a.category === 'liabilities' && a.code.startsWith('20')).map((a) => ({
+    code: a.code,
+    name: a.name,
+    amount: Math.abs(a.balance),
+  }));
+  const longTermLiabilities = accounts.filter((a) => a.category === 'liabilities' && a.code.startsWith('25')).map((a) => ({
+    code: a.code,
+    name: a.name,
+    amount: Math.abs(a.balance),
+  }));
+
+  const totalCurrentLiabilities = currentLiabilities.reduce((sum, l) => sum + l.amount, 0);
+  const totalLongTermLiabilities = longTermLiabilities.reduce((sum, l) => sum + l.amount, 0);
+
+  // Equity
+  const equityAccounts = accounts.filter((a) => a.category === 'equity').map((a) => ({
+    code: a.code,
+    name: a.name,
+    amount: a.balance,
+  }));
+
+  const totalEquity = equityAccounts.reduce((sum, e) => sum + e.amount, 0);
+  const totalAssets = totalCurrentAssets + totalFixedAssets;
+  const totalLiabilities = totalCurrentLiabilities + totalLongTermLiabilities;
+
+  return {
+    reportDate: filterDate,
+    assets: {
+      current: currentAssets,
+      fixed: fixedAssets,
+      totalCurrent: totalCurrentAssets,
+      totalFixed: totalFixedAssets,
+      totalAssets,
+    },
+    liabilities: {
+      current: currentLiabilities,
+      longTerm: longTermLiabilities,
+      totalCurrent: totalCurrentLiabilities,
+      totalLongTerm: totalLongTermLiabilities,
+      totalLiabilities,
+    },
+    equity: {
+      items: equityAccounts,
+      totalEquity,
+    },
+    totalLiabilitiesAndEquity: totalLiabilities + totalEquity,
+  };
+}
+
+export async function getIncomeStatement(startDate?: string, endDate?: string): Promise<IncomeStatementReport> {
+  await ensureDefaultCOA();
+  const entries = await loadAllEntries();
+  const accounts = await loadAllAccounts();
+
+  const start = startDate || '2024-01-01';
+  const end = endDate || nowIso().split('T')[0];
+
+  const postedEntries = entries.filter((e) => e.status === 'posted' && e.entryDate >= start && e.entryDate <= end);
+
+  const revenueCreditTotals = new Map<string, number>();
+  const expenseDebitTotals = new Map<string, number>();
+
+  for (const entry of postedEntries) {
+    const creditAcc = accounts.find((a) => a.code === entry.creditAccountCode);
+    const debitAcc = accounts.find((a) => a.code === entry.debitAccountCode);
+
+    if (creditAcc?.category === 'revenue') {
+      revenueCreditTotals.set(entry.creditAccountCode, (revenueCreditTotals.get(entry.creditAccountCode) || 0) + entry.creditAmount);
+    }
+    if (debitAcc?.category === 'expenses') {
+      expenseDebitTotals.set(entry.debitAccountCode, (expenseDebitTotals.get(entry.debitAccountCode) || 0) + entry.debitAmount);
+    }
+  }
+
+  const revenue = accounts
+    .filter((a) => a.category === 'revenue')
+    .map((a) => ({
+      code: a.code,
+      name: a.name,
+      amount: revenueCreditTotals.get(a.code) || 0,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const expenses = accounts
+    .filter((a) => a.category === 'expenses')
+    .map((a) => ({
+      code: a.code,
+      name: a.name,
+      amount: expenseDebitTotals.get(a.code) || 0,
+    }))
+    .sort((a, b) => a.code.localeCompare(b.code));
+
+  const totalRevenue = revenue.reduce((sum, r) => sum + r.amount, 0);
+  const totalExpenses = expenses.reduce((sum, e) => sum + e.amount, 0);
+
+  return {
+    period: { startDate: start, endDate: end },
+    revenue,
+    totalRevenue,
+    expenses,
+    totalExpenses,
+    netIncome: totalRevenue - totalExpenses,
+  };
+}

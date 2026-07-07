@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { projectId, publicAnonKey } from '/utils/supabase/info';
+import { initializeDefaultAdminAccount } from '../utils/admin-bootstrap';
 
 export function FixAdmin() {
   const [isLoading, setIsLoading] = useState(false);
@@ -12,25 +12,20 @@ export function FixAdmin() {
     setIsSuccess(false);
 
     try {
-      const response = await fetch(
-        `https://${projectId}.supabase.co/functions/v1/make-server-79198001/init-admin`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${publicAnonKey}`
-          }
-        }
-      );
+      const result = await initializeDefaultAdminAccount();
 
-      const data = await response.json();
-
-      if (data.success) {
+      if (result.success) {
         setIsSuccess(true);
-        setMessage('✅ Admin account has been fixed! You can now login with:\nUsername: admin\nEmail: admin@amtdistro.com\nPassword: admin');
+        const username = result.credentials?.username || 'admin';
+        const email = result.credentials?.email || 'admin@amtdistro.com';
+        const password = result.credentials?.password || 'admin';
+        setMessage(`✅ Admin account has been fixed! You can now login with:\nUsername: ${username}\nEmail: ${email}\nPassword: ${password}`);
       } else {
         setIsSuccess(false);
-        setMessage(`❌ Error: ${data.error}`);
+        const attemptedEndpoints = result.attempts
+          .map((item) => `- ${item.endpoint} (${item.status || 'network'})`)
+          .join('\n');
+        setMessage(`❌ Error: ${result.error}\n\nAttempted endpoints:\n${attemptedEndpoints}`);
       }
     } catch (error: any) {
       setIsSuccess(false);

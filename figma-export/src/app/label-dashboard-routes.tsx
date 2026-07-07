@@ -31,6 +31,7 @@ const PaymentCallback = lazy(() => import('./components/dashboard/PaymentCallbac
 const DashboardPaymentHistoryPage = lazy(() => import('./components/dashboard/DashboardPaymentHistoryPage').then((module) => ({ default: module.DashboardPaymentHistoryPage })));
 const NotificationsCenter = lazy(() => import('./components/dashboard/NotificationsCenter').then((module) => ({ default: module.NotificationsCenter })));
 const MyDisputes = lazy(() => import('./components/dashboard/MyDisputes').then((module) => ({ default: module.MyDisputes })));
+const SupportCenter = lazy(() => import('./components/dashboard/SupportCenter').then((module) => ({ default: module.SupportCenter })));
 const ContractSigningCenter = lazy(() => import('./components/contracts/ContractSigningCenter').then((module) => ({ default: module.ContractSigningCenter })));
 const SmartLinksView = lazy(() => import('./components/dashboard/SmartLinksView').then((module) => ({ default: module.SmartLinksView })));
 const SmartLinkAnalyticsView = lazy(() => import('./components/dashboard/SmartLinkAnalyticsView').then((module) => ({ default: module.SmartLinkAnalyticsView })));
@@ -224,6 +225,10 @@ export const createLabelDashboardRouter = (onLogout: () => void) => {
         {
           path: 'disputes',
           element: withSuspense(<MyDisputes />),
+        },
+        {
+          path: 'support',
+          element: withSuspense(<SupportCenter />),
         },
         {
           path: 'bank-settings',

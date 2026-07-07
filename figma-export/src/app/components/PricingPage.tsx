@@ -187,7 +187,8 @@ export function PricingPage({ onSelectPlan }: PricingPageProps) {
     if (onSelectPlan) {
       onSelectPlan(planId);
     } else {
-      window.location.href = '/get-started';
+      window.history.pushState({}, '', '/get-started');
+      window.dispatchEvent(new PopStateEvent('popstate'));
     }
   };
 

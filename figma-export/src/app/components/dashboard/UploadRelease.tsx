@@ -47,11 +47,13 @@ function getPlanDisplayName(tier: string): string {
 }
 
 const steps = [
-  { id: 1, name: 'Upload Files', icon: Upload },
-  { id: 2, name: 'Release Info', icon: Music },
-  { id: 3, name: 'Distribution', icon: Globe },
-  { id: 4, name: 'Review', icon: Check },
-  { id: 5, name: 'Payment', icon: CreditCard },
+  { id: 1, name: 'Release Details', icon: Music },
+  { id: 2, name: 'Tracks', icon: Upload },
+  { id: 3, name: 'Availability', icon: Calendar },
+  { id: 4, name: 'Territory', icon: Globe },
+  { id: 5, name: 'Partners', icon: Globe },
+  { id: 6, name: 'Review', icon: Check },
+  { id: 7, name: 'Payment', icon: CreditCard },
 ];
 
 const platforms = [
@@ -88,6 +90,15 @@ interface TrackDraft {
   explicitContent: boolean;
   producer: string;
   composer: string;
+  arranger: string;
+  lyricist: string;
+  spokenWord: string;
+  vocalLanguage: string;
+  subgenre: string;
+  recordingYear: string;
+  countryOfRecording: string;
+  previewStart: number;
+  trackAiUse: 'none' | 'some' | 'all';
   audioFile: File | null;
   audioFileUrl: string;
   existingAudioPath: string;
@@ -148,6 +159,15 @@ function createEmptyTrack(index: number): TrackDraft {
     explicitContent: false,
     producer: '',
     composer: '',
+    arranger: '',
+    lyricist: '',
+    spokenWord: '',
+    vocalLanguage: '',
+    subgenre: '',
+    recordingYear: String(new Date().getFullYear()),
+    countryOfRecording: '',
+    previewStart: 0,
+    trackAiUse: 'none',
     audioFile: null,
     audioFileUrl: '',
     existingAudioPath: '',
@@ -190,6 +210,12 @@ export function UploadRelease() {
   const [paymentEmail, setPaymentEmail] = useState('');
   const [paymentError, setPaymentError] = useState('');
 
+  // UPC state
+  const [upcVerified, setUpcVerified] = useState(false);
+  const [upcLoading, setUpcLoading] = useState(false);
+  const [upcError, setUpcError] = useState('');
+  const [upcFetchedDetails, setUpcFetchedDetails] = useState<Record<string, string>>({});
+
   const [formData, setFormData] = useState({
     releaseType: 'single' as 'single' | 'ep' | 'album',
     releaseVersion: '',
@@ -198,11 +224,70 @@ export function UploadRelease() {
     upcRequested: false,
     artistName: '',
     genre: '',
+    subgenre: '',
     releaseDate: '',
     primaryArtist: '',
     featuring: '',
     language: '',
+    labelName: '',
+    catalogNumber: '',
+    copyrightLine: '',
+    publishingLine: '',
+    isCompilation: false,
+    coverAiUse: 'none' as 'none' | 'some' | 'all',
+    metadataLanguage: 'english',
   });
+
+  // ── Availability (Step 3) ──────────────────────────────────────────────────
+  const [availabilityData, setAvailabilityData] = useState({
+    preOrderEnabled: false,
+    preOrderDate: '',
+    exclusiveEnabled: false,
+    exclusivePartner: '',
+    exclusiveStartDate: '',
+    exclusiveEndDate: '',
+    useCustomTime: false,
+    releaseTime: '',
+  });
+
+  // ── Territory (Step 4) ────────────────────────────────────────────────────
+  const [worldwide, setWorldwide] = useState(true);
+  const [excludedTerritories, setExcludedTerritories] = useState<string[]>([]);
+
+  // ── Partner Selection (Step 5) ────────────────────────────────────────────
+  const PARTNER_GROUPS = {
+    streaming: ['Alibaba','Amazon','Anghami','Apple Music / iTunes','Audiomack','Boomplay','Deezer','HIO Music','IDAGIO','iHeartRadio','JioSaavn','JOOX','KK Box','Lissen','LiveOne','NetEase','Pandora','Peloton','Qobuz','Ringtones.com','Spotify','Tapedeck','Tencent','Tidal','Trebel','YouSee / Telmore Musik'],
+    ugc: ['Audible Magic','Facebook / Instagram','Kuaishou','Mixcloud','Pretzel','TikTok','YouTube'],
+    whiteLabel: ['7Digital','Claro','d\'Music','Fluxus','Kan Music','KDM (K Digital Media)','Medianet','Tuned Global','VL Group'],
+    technology: ['ACRCloud','BMAT'],
+    licensing: ['Lickd'],
+    backgroundMusic: ['AMI Entertainment','TouchTunes'],
+  };
+  const [selectedPartners, setSelectedPartners] = useState<Record<string,string[]>>({
+    streaming: [...PARTNER_GROUPS.streaming],
+    ugc: [...PARTNER_GROUPS.ugc],
+    whiteLabel: [...PARTNER_GROUPS.whiteLabel],
+    technology: [...PARTNER_GROUPS.technology],
+    licensing: [...PARTNER_GROUPS.licensing],
+    backgroundMusic: [...PARTNER_GROUPS.backgroundMusic],
+  });
+  const togglePartner = (group: string, partner: string) => {
+    setSelectedPartners((prev) => {
+      const current = prev[group] || [];
+      return {
+        ...prev,
+        [group]: current.includes(partner) ? current.filter((p) => p !== partner) : [...current, partner],
+      };
+    });
+  };
+  const toggleAllInGroup = (group: string) => {
+    const all = PARTNER_GROUPS[group as keyof typeof PARTNER_GROUPS];
+    const current = selectedPartners[group] || [];
+    setSelectedPartners((prev) => ({
+      ...prev,
+      [group]: current.length === all.length ? [] : [...all],
+    }));
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
@@ -219,6 +304,55 @@ export function UploadRelease() {
         ? prev.filter((id) => id !== platformId)
         : [...prev, platformId]
     );
+  };
+
+  // UPC Handlers
+  const openUpcProvider = () => {
+    // Open Barcodable to get a UPC
+    window.open('https://www.barcodable.com/gtin-barcode', '_blank');
+  };
+
+  const verifyUpc = async () => {
+    if (!formData.upc.trim()) {
+      setUpcError('Please enter a UPC');
+      return;
+    }
+    setUpcError('');
+    setUpcLoading(true);
+    try {
+      // TODO: Integrate with your UPC validation API
+      // Example structure:
+      // const response = await fetch('/api/upc/verify', {
+      //   method: 'POST',
+      //   headers: { 'Content-Type': 'application/json' },
+      //   body: JSON.stringify({ upc: formData.upc }),
+      // });
+      // const data = await response.json();
+      
+      // For now, perform basic UPC format validation
+      const upcRegex = /^\d{12}$|^\d{13}$|^\d{14}$/; // UPC-A (12), EAN-13 (13), GTIN-14 (14)
+      if (!upcRegex.test(formData.upc.trim())) {
+        setUpcError('Invalid UPC format. Use 12, 13, or 14 digits.');
+        setUpcVerified(false);
+        return;
+      }
+      
+      setUpcVerified(true);
+      setUpcFetchedDetails({
+        status: 'valid',
+        format: formData.upc.length === 12 ? 'UPC-A' : formData.upc.length === 13 ? 'EAN-13' : 'GTIN-14',
+        upc: formData.upc,
+      });
+    } catch (err) {
+      setUpcError('Failed to verify UPC. Please try again.');
+      setUpcVerified(false);
+    } finally {
+      setUpcLoading(false);
+    }
+  };
+
+  const openUpcHelp = () => {
+    window.open('https://support.symphonicms.com/articles/upc-guide', '_blank');
   };
 
   const nextStep = () => {
@@ -476,16 +610,15 @@ export function UploadRelease() {
   const isEditMode = Boolean(releaseId);
 
   // Per-step readiness — determines whether the "Next" button is enabled
-  const step1Ready = hasAudioSource && hasArtworkSource;
+  const step1Ready = hasArtworkSource && Boolean(formData.title.trim() && formData.primaryArtist.trim() && formData.genre);
   const step2Ready = Boolean(
-    formData.title.trim() &&
-    formData.primaryArtist.trim() &&
-    formData.genre &&
-    formData.releaseDate &&
+    hasAudioSource &&
     trackDrafts.every((t) => t.title.trim() && t.duration >= 30)
   );
-  const step3Ready = selectedPlatforms.length > 0;
-  // step 4 (Review) → always ready to proceed (enterPaymentStep has its own loading guard)
+  const step3Ready = Boolean(formData.releaseDate);
+  const step4Ready = true; // territory always valid (worldwide default)
+  const step5Ready = Object.values(selectedPartners).some((g) => g.length > 0);
+  // step 6 (Review) → always ready to proceed
   const effectiveDashboardMode = getEffectiveDashboardMode(currentUserProfile ?? {});
   const isLabelUser = isLabelDashboard || effectiveDashboardMode === 'label';
   const isArtistUser = !isLabelUser && effectiveDashboardMode === 'artist';
@@ -669,7 +802,7 @@ export function UploadRelease() {
     } finally {
       setIsLoadingFee(false);
     }
-    setCurrentStep(5);
+    setCurrentStep(7);
   }
 
   const selectedPromoAddonPlan = PROMOTION_PLANS.find((p) => p.id === selectedPromoAddon) || null;
@@ -1096,189 +1229,699 @@ export function UploadRelease() {
             </Card>
           )}
 
-          {/* Step 1: Upload Files */}
+          {/* Step 1: Release Details */}
           {currentStep === 1 && (
             <div className="space-y-8">
               <div>
-                <div className="flex items-center justify-between gap-4 mb-6">
-                  <div className="flex-1">
-                    <h3 className={`text-2xl font-bold mb-2 text-[#FF6B00]`}>Upload Track Files</h3>
-                    <p className={`text-base ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Add high-quality audio files (WAV, FLAC) for each track in your release.</p>
-                  </div>
-                  {formData.releaseType !== 'single' && (
-                    <Button onClick={addTrackDraft} className={`whitespace-nowrap ${'bg-[#FF6B00] text-white hover:bg-[#FF8C00]'}`}>
-                      <Plus className="mr-2 h-5 w-5" />
-                      Add Track
-                    </Button>
-                  )}
-                </div>
+                <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Release Details</h3>
+                <p className="text-base text-[#B3B3B3]">We follow strict guidelines as set forth by Apple Music, Spotify and more. Please fill in all required fields accurately.</p>
               </div>
 
-              <div className="space-y-5">{trackDrafts.map((track, index) => (
-                  <Card key={track.id || `track-${index}`} className={`transition-all ${'border-[#FF6B00]/15 bg-[#0A0A0A]/40 p-6 text-white'}`}>
-                    <div className="mb-6 flex items-center justify-between gap-3">
-                      <div>
-                        <h4 className={`font-bold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Track {track.trackNumber}</h4>
-                        <p className={`text-sm ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>{track.title || 'Untitled track'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="icon" onClick={() => moveTrackDraft(index, 'up')} disabled={index === 0} className={isLabelDashboard ? 'border-[#FF6B00]/20 bg-transparent text-[#FF6B00] hover:bg-[#161616]' : 'hover:bg-[#161616]/5'}>
-                          <ChevronUp className="h-5 w-5" />
-                        </Button>
-                        <Button variant="outline" size="icon" onClick={() => moveTrackDraft(index, 'down')} disabled={index === trackDrafts.length - 1} className={isLabelDashboard ? 'border-[#FF6B00]/20 bg-transparent text-[#FF6B00] hover:bg-[#161616]' : 'hover:bg-[#161616]/5'}>
-                          <ChevronDown className="h-5 w-5" />
-                        </Button>
-                        {trackDrafts.length > 1 && (
-                          <Button variant="outline" size="sm" onClick={() => removeTrackDraft(index)} className={'border-red-500/20 bg-transparent text-red-400 hover:bg-red-500/10'}>
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className={`rounded-xl border-2 border-dashed transition-all p-8 text-center ${'border-[#FF6B00]/20 bg-[#161616]/50 hover:border-[#FF6B00]/50 hover:bg-[#161616]/80'}`}>
-                      {track.audioFile ? (
-                        <div className="space-y-4">
-                          <div className="w-20 h-20 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto shadow-lg">
-                            <FileAudio className="w-10 h-10 text-white" />
-                          </div>
-                          <div>
-                            <p className={`font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{track.audioFile.name}</p>
-                            <p className={`text-sm mt-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>{(track.audioFile.size / (1024 * 1024)).toFixed(2)} MB</p>
-                          </div>
-                          <div className="max-w-xs mx-auto">
-                            <Progress value={track.uploadProgress} className="mb-2 h-2" />
-                            <p className={`text-sm font-medium ${'text-[#FF6B00]'}`}>Uploaded {track.uploadProgress}%</p>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => updateTrackDraft(index, 'audioFile', null)} className={'border-red-500/20 bg-transparent text-red-400 hover:bg-red-500/10'}>
-                            <X className="w-4 h-4 mr-2" />
-                            Remove
-                          </Button>
-                        </div>
-                      ) : track.existingAudioName ? (
-                        <div className="space-y-4">
-                          <div className="w-20 h-20 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center mx-auto shadow-lg">
-                            <FileAudio className="w-10 h-10 text-white" />
-                          </div>
-                          <div>
-                            <p className={`font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{track.existingAudioName}</p>
-                            <p className={`text-sm mt-1 font-medium ${isLabelDashboard ? 'text-[#FF6B00]' : 'text-green-600'}`}>✓ Ready for delivery</p>
-                          </div>
-                          <label htmlFor={`audio-upload-${index}`}>
-                            <Button variant="outline" asChild className={'border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10'}>
-                              <span>Replace Audio File</span>
-                            </Button>
-                          </label>
-                          <input
-                            id={`audio-upload-${index}`}
-                            type="file"
-                            accept=".wav,.flac"
-                            className="hidden"
-                            onChange={(e) => handleFileUpload(e, 'audio', index)}
-                          />
-                        </div>
-                      ) : (
-                        <>
-                          <Upload className={`w-16 h-16 mx-auto mb-4 ${'text-[#FF6B00]/40'}`} />
-                          <p className={`mb-1 font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Upload audio for track {index + 1}</p>
-                          <p className={`text-base mb-6 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Drag & drop or click to browse. WAV and FLAC formats supported.</p>
-                          <label htmlFor={`audio-upload-${index}`}>
-                            <Button className={`${'bg-[#FF6B00] text-white hover:bg-[#FF8C00]'}`} asChild>
-                              <span>Choose File</span>
-                            </Button>
-                          </label>
-                          <input
-                            id={`audio-upload-${index}`}
-                            type="file"
-                            accept=".wav,.flac"
-                            className="hidden"
-                            onChange={(e) => handleFileUpload(e, 'audio', index)}
-                          />
-                        </>
-                      )}
-                    </div>
-                  </Card>
-                ))}
-              </div>
-
-              <div className="mt-8">
-                <h3 className={`text-2xl font-bold mb-2 text-[#FF6B00]`}>Release Artwork</h3>
-                <p className={`text-base mb-6 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Upload professional cover art. Minimum 3000x3000 pixels (JPG, PNG, or WebP).</p>
-                <div className={`rounded-xl border-2 border-dashed transition-all p-8 text-center ${'border-[#FF6B00]/20 bg-[#161616]/50 hover:border-[#FF6B00]/50 hover:bg-[#161616]/80'}`}>
+              {/* Cover Art */}
+              <div>
+                <h4 className="text-lg font-semibold mb-3 text-white">Cover Art *</h4>
+                <div className={`rounded-xl border-2 border-dashed transition-all p-8 text-center border-[#FF6B00]/20 bg-[#161616]/50 hover:border-[#FF6B00]/50`}>
                   {coverArt ? (
                     <div className="space-y-4">
                       <div className="w-32 h-32 mx-auto rounded-lg overflow-hidden shadow-lg">
-                        <img
-                          src={URL.createObjectURL(coverArt)}
-                          alt="Cover art preview"
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={URL.createObjectURL(coverArt)} alt="Cover art preview" className="w-full h-full object-cover" />
                       </div>
-                      <div>
-                        <p className={`font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{coverArt.name}</p>
-                      </div>
+                      <p className="font-semibold text-white">{coverArt.name}</p>
                       <div className="max-w-xs mx-auto">
                         <Progress value={coverUploadProgress} className="mb-2 h-2" />
-                        <p className={`text-sm font-medium ${'text-[#FF6B00]'}`}>Uploaded {coverUploadProgress}%</p>
+                        <p className="text-sm font-medium text-[#FF6B00]">Uploaded {coverUploadProgress}%</p>
                       </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setCoverArt(null)}
-                        className={'border-red-500/20 bg-transparent text-red-400 hover:bg-red-500/10'}
-                      >
-                        <X className="w-4 h-4 mr-2" />
-                        Remove
+                      <Button variant="outline" size="sm" onClick={() => setCoverArt(null)} className="border-red-500/20 bg-transparent text-red-400 hover:bg-red-500/10">
+                        <X className="w-4 h-4 mr-2" />Remove
                       </Button>
                     </div>
                   ) : existingArtworkUrl ? (
                     <div className="space-y-4">
                       <div className="w-32 h-32 mx-auto rounded-lg overflow-hidden shadow-lg">
-                        <img
-                          src={existingArtworkUrl}
-                          alt="Current cover art"
-                          className="w-full h-full object-cover"
-                        />
+                        <img src={existingArtworkUrl} alt="Current cover art" className="w-full h-full object-cover" />
                       </div>
-                      <div>
-                        <p className={`font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Current Cover Art</p>
-                        <p className={`text-sm mt-1 font-medium ${isLabelDashboard ? 'text-[#FF6B00]' : 'text-green-600'}`}>✓ Ready for release</p>
-                      </div>
+                      <p className="font-semibold text-white">Current Cover Art</p>
+                      <p className="text-sm font-medium text-[#FF6B00]">✓ Ready for release</p>
                       <label htmlFor="cover-upload">
-                        <Button variant="outline" asChild className={'border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10'}>
-                          <span>Replace Cover Art</span>
-                        </Button>
+                        <Button variant="outline" asChild className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10"><span>Replace Cover Art</span></Button>
                       </label>
-                      <input
-                        id="cover-upload"
-                        type="file"
-                        accept=".jpg,.jpeg,.png,.webp"
-                        className="hidden"
-                        onChange={(e) => handleFileUpload(e, 'cover')}
-                      />
+                      <input id="cover-upload" type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => handleFileUpload(e, 'cover')} />
                     </div>
                   ) : (
                     <>
-                      <ImageIcon className={`w-16 h-16 mx-auto mb-4 ${'text-[#FF6B00]/40'}`} />
-                      <p className={`mb-1 font-semibold text-lg ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Drag & drop your cover art here</p>
-                      <p className={`text-base mb-6 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Minimum 3000x3000px. JPEG, PNG, or WebP formats supported.</p>
+                      <ImageIcon className="w-16 h-16 mx-auto mb-4 text-[#FF6B00]/40" />
+                      <p className="mb-1 font-semibold text-lg text-white">Drag & drop your cover art here</p>
+                      <p className="text-base mb-6 text-[#B3B3B3]">Minimum 3000×3000px · JPEG, PNG, WebP</p>
                       <label htmlFor="cover-upload">
-                        <Button className={`${'bg-[#FF6B00] text-white hover:bg-[#FF8C00]'}`} asChild>
-                          <span>Choose Image</span>
-                        </Button>
+                        <Button className="bg-[#FF6B00] text-white hover:bg-[#FF8C00]" asChild><span>Choose Image</span></Button>
                       </label>
-                      <input
-                        id="cover-upload"
-                        type="file"
-                        accept=".jpg,.jpeg,.png,.webp"
-                        className="hidden"
-                        onChange={(e) => handleFileUpload(e, 'cover')}
-                      />
+                      <input id="cover-upload" type="file" accept=".jpg,.jpeg,.png,.webp" className="hidden" onChange={(e) => handleFileUpload(e, 'cover')} />
                     </>
                   )}
                 </div>
+                {/* Cover AI use */}
+                <div className="mt-3">
+                  <Label className="font-semibold text-white">Cover Art AI Use *</Label>
+                  <select value={formData.coverAiUse} name="coverAiUse" onChange={handleInputChange} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                    <option value="none">None – No AI tools used</option>
+                    <option value="some">Some – AI assisted in creation</option>
+                    <option value="all">All – Entirely AI-generated</option>
+                  </select>
+                </div>
               </div>
+
+              <div className="grid md:grid-cols-2 gap-6">
+                <div>
+                  <Label className="font-semibold text-white">Release Title *</Label>
+                  <Input name="title" value={formData.title} onChange={handleInputChange} placeholder="Enter release title" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Release Version (Optional)</Label>
+                  <Input name="releaseVersion" value={formData.releaseVersion} onChange={handleInputChange} placeholder="e.g. Deluxe, Radio Edit" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Metadata Language *</Label>
+                  <select name="metadataLanguage" value={formData.metadataLanguage} onChange={handleInputChange} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                    <option value="english">English</option>
+                    <option value="yoruba">Yoruba</option>
+                    <option value="igbo">Igbo</option>
+                    <option value="hausa">Hausa</option>
+                    <option value="french">French</option>
+                    <option value="spanish">Spanish</option>
+                    <option value="portuguese">Portuguese</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Primary Artist *</Label>
+                  {isLabelUser ? (
+                    <select name="primaryArtist" value={formData.primaryArtist} onChange={handleInputChange} disabled={labelArtistOptions.length === 0} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                      {labelArtistOptions.length === 0 && <option value="">Create an artist first</option>}
+                      {formData.primaryArtist && !hasMatchingPrimaryArtistOption && <option value={formData.primaryArtist}>{formData.primaryArtist}</option>}
+                      {labelArtistOptions.map((a) => <option key={a.id} value={a.name}>{a.name}</option>)}
+                    </select>
+                  ) : (
+                    <Input name="primaryArtist" value={formData.primaryArtist} onChange={handleInputChange} placeholder="Primary artist name" disabled={isArtistUser} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                  )}
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Genre *</Label>
+                  <select name="genre" value={formData.genre} onChange={handleInputChange} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                    <option value="">Select genre</option>
+                    <option value="afrobeats">Afrobeats</option>
+                    <option value="pop">Pop</option>
+                    <option value="hip-hop">Hip-Hop / Rap</option>
+                    <option value="rnb">R&B / Soul</option>
+                    <option value="electronic">Electronic</option>
+                    <option value="rock">Rock</option>
+                    <option value="jazz">Jazz</option>
+                    <option value="gospel">Christian & Gospel</option>
+                    <option value="classical">Classical</option>
+                    <option value="reggae">Reggae</option>
+                    <option value="country">Country</option>
+                    <option value="latin">Latin</option>
+                  </select>
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Subgenre (Optional)</Label>
+                  <Input name="subgenre" value={formData.subgenre} onChange={handleInputChange} placeholder="e.g. Gospel, Trap, House" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Label Name</Label>
+                  <Input name="labelName" value={formData.labelName} onChange={handleInputChange} placeholder="Your label name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Catalog #</Label>
+                  <Input name="catalogNumber" value={formData.catalogNumber} onChange={handleInputChange} placeholder="Your internal catalog identifier" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">© C-Line (Copyright)</Label>
+                  <Input name="copyrightLine" value={formData.copyrightLine} onChange={handleInputChange} placeholder={`${new Date().getFullYear()} Your Label Name`} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">℗ P-Line (Publishing)</Label>
+                  <Input name="publishingLine" value={formData.publishingLine} onChange={handleInputChange} placeholder={`${new Date().getFullYear()} Your Label Name`} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">UPC</Label>
+                  <Input name="upc" value={formData.upc} onChange={handleInputChange} placeholder="Enter UPC or leave blank to assign on submission" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                  <label className="mt-2 flex items-center gap-2 text-sm text-[#B3B3B3]">
+                    <input type="checkbox" name="upcRequested" checked={formData.upcRequested} onChange={handleInputChange} className="h-4 w-4 rounded" />
+                    <span>Request UPC from admin</span>
+                  </label>
+                </div>
+                <div>
+                  <Label className="font-semibold text-white">Release Type *</Label>
+                  <select name="releaseType" value={formData.releaseType} onChange={handleInputChange} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                    <option value="single">Single</option>
+                    <option value="ep">EP</option>
+                    <option value="album">Album</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Compilation toggle */}
+              <label className="flex items-center gap-3 text-white">
+                <input type="checkbox" name="isCompilation" checked={formData.isCompilation} onChange={handleInputChange} className="h-5 w-5 rounded border-[#FF6B00]/30" />
+                <div>
+                  <span className="font-semibold">Yes, this is a compilation</span>
+                  <p className="text-sm text-[#B3B3B3]">Select if this release features multiple artists not under one primary artist.</p>
+                </div>
+              </label>
+            </div>
+          )}
+
+          {/* Step 2: Tracks */}
+          {currentStep === 2 && (
+            <div className="space-y-8">
+              <div className="flex items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Tracks</h3>
+                  <p className="text-base text-[#B3B3B3]">Upload your audio files and fill in full track details including contributors, ISRC, and lyrics.</p>
+                </div>
+                {formData.releaseType !== 'single' && (
+                  <Button onClick={addTrackDraft} className="bg-[#FF6B00] text-white hover:bg-[#FF8C00]">
+                    <Plus className="mr-2 h-4 w-4" />Add Track
+                  </Button>
+                )}
+              </div>
+
+              {trackDrafts.map((track, index) => (
+                <Card key={track.id || `track-${index}`} className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h5 className="text-lg font-bold text-white">Track {track.trackNumber}</h5>
+                      <p className="text-sm text-[#B3B3B3]">{track.existingAudioName || track.audioFile?.name || 'No file yet'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button variant="outline" size="icon" onClick={() => moveTrackDraft(index, 'up')} disabled={index === 0} className="border-[#FF6B00]/30"><ChevronUp className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon" onClick={() => moveTrackDraft(index, 'down')} disabled={index === trackDrafts.length - 1} className="border-[#FF6B00]/30"><ChevronDown className="h-4 w-4" /></Button>
+                      {trackDrafts.length > 1 && (
+                        <Button variant="outline" size="sm" onClick={() => removeTrackDraft(index)} className="border-red-500/20 text-red-400 hover:bg-red-500/10"><Trash2 className="mr-1 h-4 w-4" />Remove</Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Audio Upload */}
+                  <div className="rounded-xl border-2 border-dashed border-[#FF6B00]/20 bg-[#161616]/50 p-6 text-center hover:border-[#FF6B00]/50 transition-all">
+                    {track.audioFile || track.existingAudioName ? (
+                      <div className="space-y-3">
+                        <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto">
+                          <FileAudio className="w-8 h-8 text-white" />
+                        </div>
+                        <p className="font-semibold text-white">{track.audioFile?.name || track.existingAudioName}</p>
+                        {track.uploadProgress < 100 && track.audioFile && (
+                          <div className="max-w-xs mx-auto">
+                            <Progress value={track.uploadProgress} className="h-2 mb-1" />
+                            <p className="text-sm text-[#FF6B00]">{track.uploadProgress}% uploaded</p>
+                          </div>
+                        )}
+                        {track.uploadProgress === 100 && <p className="text-sm text-green-400 font-medium">✓ Ready for delivery</p>}
+                        <label htmlFor={`audio-upload-${index}`}>
+                          <Button variant="outline" asChild className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10 text-sm"><span>Replace Audio</span></Button>
+                        </label>
+                        <input id={`audio-upload-${index}`} type="file" accept=".wav,.flac" className="hidden" onChange={(e) => handleFileUpload(e, 'audio', index)} />
+                      </div>
+                    ) : (
+                      <>
+                        <Upload className="w-12 h-12 mx-auto mb-3 text-[#FF6B00]/40" />
+                        <p className="font-semibold text-white mb-1">Upload audio for track {index + 1}</p>
+                        <p className="text-sm text-[#B3B3B3] mb-4">WAV or FLAC · 24-bit recommended</p>
+                        <label htmlFor={`audio-upload-${index}`}>
+                          <Button className="bg-[#FF6B00] text-white hover:bg-[#FF8C00]" asChild><span>Choose File</span></Button>
+                        </label>
+                        <input id={`audio-upload-${index}`} type="file" accept=".wav,.flac" className="hidden" onChange={(e) => handleFileUpload(e, 'audio', index)} />
+                      </>
+                    )}
+                  </div>
+
+                  {/* Track basic info */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="font-semibold text-white">Song Name *</Label>
+                      <Input value={track.title} onChange={(e) => updateTrackDraft(index, 'title', e.target.value)} placeholder="Track title" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Version (Optional)</Label>
+                      <Input value={track.version} onChange={(e) => updateTrackDraft(index, 'version', e.target.value)} placeholder="e.g. Radio Edit, Acoustic" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">ISRC</Label>
+                      <Input value={track.isrc} onChange={(e) => updateTrackDraft(index, 'isrc', e.target.value)} disabled={track.isrcRequested} placeholder="e.g. GBWUL2631086" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white disabled:opacity-40" />
+                      <label className="mt-2 flex items-center gap-2 text-sm text-[#B3B3B3]">
+                        <input type="checkbox" checked={track.isrcRequested} onChange={(e) => updateTrackDraft(index, 'isrcRequested', e.target.checked)} className="h-4 w-4 rounded" />
+                        <span>Generate ISRC for me</span>
+                      </label>
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Clip Start Time (seconds)</Label>
+                      <Input type="number" min="0" value={track.previewStart} onChange={(e) => updateTrackDraft(index, 'previewStart', Number(e.target.value))} placeholder="0" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Duration (seconds) *</Label>
+                      <Input type="number" min="30" value={track.duration} onChange={(e) => updateTrackDraft(index, 'duration', Number(e.target.value) || 0)} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Track # / Disc #</Label>
+                      <div className="flex gap-2 mt-2">
+                        <Input type="number" min="1" value={track.trackNumber} onChange={(e) => updateTrackDraft(index, 'trackNumber', Number(e.target.value) || 1)} className="border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                        <Input type="number" min="1" value={track.discNumber} onChange={(e) => updateTrackDraft(index, 'discNumber', Number(e.target.value) || 1)} className="border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Track AI use */}
+                  <div>
+                    <Label className="font-semibold text-white">Stereo Track AI Use</Label>
+                    <select value={track.trackAiUse} onChange={(e) => updateTrackDraft(index, 'trackAiUse', e.target.value as 'none'|'some'|'all')} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                      <option value="none">None</option>
+                      <option value="some">Some</option>
+                      <option value="all">All</option>
+                    </select>
+                  </div>
+
+                  {/* Contributors */}
+                  <div className="space-y-4">
+                    <h6 className="text-sm font-bold text-[#FF6B00] uppercase tracking-wider">Writers</h6>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-white text-sm">Arranger</Label>
+                        <Input value={track.arranger} onChange={(e) => updateTrackDraft(index, 'arranger', e.target.value)} placeholder="Full name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                      </div>
+                      <div>
+                        <Label className="text-white text-sm">Composer</Label>
+                        <Input value={track.composer} onChange={(e) => updateTrackDraft(index, 'composer', e.target.value)} placeholder="Full name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                      </div>
+                      <div>
+                        <Label className="text-white text-sm">Lyricist</Label>
+                        <Input value={track.lyricist} onChange={(e) => updateTrackDraft(index, 'lyricist', e.target.value)} placeholder="Full name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                      </div>
+                    </div>
+                    <h6 className="text-sm font-bold text-[#FF6B00] uppercase tracking-wider mt-4">Performers <span className="text-[#B3B3B3] font-normal normal-case">(Required for Apple)</span></h6>
+                    <div>
+                      <Label className="text-white text-sm">Spoken Word</Label>
+                      <Input value={track.spokenWord} onChange={(e) => updateTrackDraft(index, 'spokenWord', e.target.value)} placeholder="Full name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <h6 className="text-sm font-bold text-[#FF6B00] uppercase tracking-wider mt-4">Production & Engineering <span className="text-[#B3B3B3] font-normal normal-case">(Required for Apple)</span></h6>
+                    <div>
+                      <Label className="text-white text-sm">Producer</Label>
+                      <Input value={track.producer} onChange={(e) => updateTrackDraft(index, 'producer', e.target.value)} placeholder="Full name" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                  </div>
+
+                  {/* Genre / Recording */}
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="font-semibold text-white">Genre</Label>
+                      <Input value={track.subgenre || formData.genre} onChange={(e) => updateTrackDraft(index, 'subgenre', e.target.value)} placeholder="Christian & Gospel, Afrobeats…" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Subgenre</Label>
+                      <Input value={track.subgenre} onChange={(e) => updateTrackDraft(index, 'subgenre', e.target.value)} placeholder="e.g. Gospel, Trap" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Recording Year</Label>
+                      <Input value={track.recordingYear} onChange={(e) => updateTrackDraft(index, 'recordingYear', e.target.value)} placeholder={String(new Date().getFullYear())} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Country of Recording</Label>
+                      <Input value={track.countryOfRecording} onChange={(e) => updateTrackDraft(index, 'countryOfRecording', e.target.value)} placeholder="e.g. Nigeria, USA, UK" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white" />
+                    </div>
+                    <div>
+                      <Label className="font-semibold text-white">Vocal Language</Label>
+                      <select value={track.vocalLanguage} onChange={(e) => updateTrackDraft(index, 'vocalLanguage', e.target.value)} className="mt-2 w-full rounded-lg border-2 border-[#FF6B00]/30 bg-[#0A0A0A] px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FF6B00]">
+                        <option value="">Select vocal language</option>
+                        <option value="english">English</option>
+                        <option value="yoruba">Yoruba</option>
+                        <option value="igbo">Igbo</option>
+                        <option value="hausa">Hausa</option>
+                        <option value="pidgin">Pidgin</option>
+                        <option value="french">French</option>
+                        <option value="spanish">Spanish</option>
+                        <option value="portuguese">Portuguese</option>
+                        <option value="instrumental">Instrumental</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-3 mt-6">
+                      <input type="checkbox" id={`explicit-${index}`} checked={track.explicitContent} onChange={(e) => updateTrackDraft(index, 'explicitContent', e.target.checked)} className="h-5 w-5 rounded border-[#FF6B00]/30" />
+                      <Label htmlFor={`explicit-${index}`} className="cursor-pointer font-medium text-white">Explicit Content</Label>
+                    </div>
+                  </div>
+
+                  {/* Lyrics */}
+                  <div>
+                    <Label className="font-semibold text-white">Lyrics</Label>
+                    <p className="text-sm text-[#B3B3B3] mb-2">List in standard lyrical format. Repeated lines must be transcribed. Don't annotate section headers.</p>
+                    <Textarea value={track.lyrics} onChange={(e) => updateTrackDraft(index, 'lyrics', e.target.value)} className="mt-1 min-h-36 border-2 border-[#FF6B00]/30 bg-[#0A0A0A] text-white placeholder-[#666]" placeholder="Enter full lyrics here…" />
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+
+          {/* Step 3: Release Availability */}
+          {currentStep === 3 && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Release Availability</h3>
+                <p className="text-base text-[#B3B3B3]">Plan when, where, and how your release launches. Set your release date 4–6 weeks into the future to allow for review and marketing.</p>
+              </div>
+
+              {/* UPC / Barcode */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-semibold text-white">Release Barcode (UPC) <span className="ml-2 text-xs text-[#B3B3B3] font-normal">OPTIONAL</span></h4>
+                <p className="text-sm text-[#B3B3B3]">Does this release have a UPC associated to it? If this is previously released music, provide the UPC assigned by your original distributor.</p>
+                
+                <div className="space-y-4">
+                  {!upcVerified ? (
+                    <>
+                      {/* Option 1: Request New UPC */}
+                      <Button 
+                        onClick={openUpcProvider}
+                        className="w-full bg-gray-700 hover:bg-gray-600 text-white font-medium py-2 rounded-lg transition"
+                      >
+                        I need a UPC
+                      </Button>
+
+                      {/* Option 2: Enter Existing UPC */}
+                      <div className="space-y-2">
+                        <Label className="text-white text-sm">UPC</Label>
+                        <Input
+                          type="text"
+                          name="upc"
+                          placeholder="Enter 12, 13, or 14 digit UPC"
+                          value={formData.upc}
+                          onChange={handleInputChange}
+                          maxLength={14}
+                          className="border-2 border-[#FF6B00]/30 bg-[#161616] text-white placeholder-gray-600"
+                        />
+                      </div>
+
+                      {/* Option 3: Verify Button */}
+                      <Button 
+                        onClick={verifyUpc}
+                        disabled={upcLoading || !formData.upc.trim()}
+                        className={`w-full font-medium py-2 rounded-lg transition ${
+                          upcLoading ? 'bg-gray-600 text-gray-300 cursor-not-allowed' : 'bg-[#4CAF50] hover:bg-[#45a049] text-white'
+                        }`}
+                      >
+                        {upcLoading ? 'Verifying...' : 'Verify UPC'}
+                      </Button>
+
+                      {/* Option 4: Help Link */}
+                      <button 
+                        onClick={openUpcHelp}
+                        className="text-sm text-[#FF6B00] hover:underline"
+                      >
+                        I don't know my UPC
+                      </button>
+
+                      {/* Error Message */}
+                      {upcError && (
+                        <Card className="border border-red-500/30 bg-red-500/10 p-3">
+                          <p className="text-sm text-red-400">{upcError}</p>
+                        </Card>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      {/* UPC Verified State */}
+                      <Card className="border-2 border-green-500/30 bg-green-500/10 p-4">
+                        <div className="flex items-center gap-3">
+                          <Check className="w-5 h-5 text-green-400 flex-shrink-0" />
+                          <div>
+                            <p className="text-sm font-semibold text-green-400">UPC Verified</p>
+                            <p className="text-xs text-green-300 mt-1">
+                              {upcFetchedDetails.format && `Format: ${upcFetchedDetails.format} · `}
+                              UPC: {formData.upc}
+                            </p>
+                          </div>
+                        </div>
+                      </Card>
+                      
+                      {/* Clear/Change UPC */}
+                      <button 
+                        onClick={() => {
+                          setUpcVerified(false);
+                          setFormData(p => ({ ...p, upc: '' }));
+                          setUpcFetchedDetails({});
+                          setUpcError('');
+                        }}
+                        className="text-sm text-[#FF6B00] hover:underline"
+                      >
+                        Change UPC
+                      </button>
+                    </>
+                  )}
+                </div>
+              </Card>
+
+              {/* Pre-Order Window */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-white">Pre-Order Window <span className="ml-2 text-xs text-[#B3B3B3] font-normal">OPTIONAL</span></h4>
+                    <p className="text-sm text-[#B3B3B3]">Allow fans to pre-order before the general release date.</p>
+                  </div>
+                  <button onClick={() => setAvailabilityData((p) => ({ ...p, preOrderEnabled: !p.preOrderEnabled }))} className={`relative w-12 h-6 rounded-full transition-colors ${availabilityData.preOrderEnabled ? 'bg-[#FF6B00]' : 'bg-[#333]'}`}>
+                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${availabilityData.preOrderEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {availabilityData.preOrderEnabled && (
+                  <div>
+                    <Label className="text-white text-sm">Pre-Order Start Date</Label>
+                    <Input type="date" value={availabilityData.preOrderDate} onChange={(e) => setAvailabilityData((p) => ({ ...p, preOrderDate: e.target.value }))} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+                  </div>
+                )}
+              </Card>
+
+              {/* Exclusive Window */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-white">Exclusive Window <span className="ml-2 text-xs text-[#B3B3B3] font-normal">OPTIONAL</span></h4>
+                    <p className="text-sm text-[#B3B3B3]">Allow one partner to carry your release ahead of general release.</p>
+                  </div>
+                  <button onClick={() => setAvailabilityData((p) => ({ ...p, exclusiveEnabled: !p.exclusiveEnabled }))} className={`relative w-12 h-6 rounded-full transition-colors ${availabilityData.exclusiveEnabled ? 'bg-[#FF6B00]' : 'bg-[#333]'}`}>
+                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${availabilityData.exclusiveEnabled ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {availabilityData.exclusiveEnabled && (
+                  <div className="grid md:grid-cols-3 gap-4">
+                    <div>
+                      <Label className="text-white text-sm">Exclusive Partner</Label>
+                      <Input value={availabilityData.exclusivePartner} onChange={(e) => setAvailabilityData((p) => ({ ...p, exclusivePartner: e.target.value }))} placeholder="e.g. Spotify, Apple Music" className="mt-2 border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-white text-sm">Start Date</Label>
+                      <Input type="date" value={availabilityData.exclusiveStartDate} onChange={(e) => setAvailabilityData((p) => ({ ...p, exclusiveStartDate: e.target.value }))} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+                    </div>
+                    <div>
+                      <Label className="text-white text-sm">End Date</Label>
+                      <Input type="date" value={availabilityData.exclusiveEndDate} onChange={(e) => setAvailabilityData((p) => ({ ...p, exclusiveEndDate: e.target.value }))} className="mt-2 border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+                    </div>
+                  </div>
+                )}
+              </Card>
+
+              {/* Release Date */}
+              <Card className="border-2 border-[#FF6B00]/30 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-semibold text-white">General Release Date *</h4>
+                <Card className="border border-amber-500/30 bg-amber-500/10 p-3">
+                  <p className="text-sm text-amber-300">Set your release date 4–6 weeks in the future to allow review and take advantage of marketing offers like playlist pitching.</p>
+                </Card>
+                <Input type="date" name="releaseDate" value={formData.releaseDate} onChange={handleInputChange} className="border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+              </Card>
+
+              {/* Release Time */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="font-semibold text-white">Release Time <span className="ml-2 text-xs text-[#B3B3B3] font-normal">OPTIONAL</span></h4>
+                    <p className="text-sm text-[#B3B3B3]">By default your release goes live at midnight in each territory. Override here if needed.</p>
+                  </div>
+                  <button onClick={() => setAvailabilityData((p) => ({ ...p, useCustomTime: !p.useCustomTime }))} className={`relative w-12 h-6 rounded-full transition-colors ${availabilityData.useCustomTime ? 'bg-[#FF6B00]' : 'bg-[#333]'}`}>
+                    <span className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${availabilityData.useCustomTime ? 'translate-x-7' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {availabilityData.useCustomTime && (
+                  <Input type="time" value={availabilityData.releaseTime} onChange={(e) => setAvailabilityData((p) => ({ ...p, releaseTime: e.target.value }))} className="border-2 border-[#FF6B00]/30 bg-[#161616] text-white" />
+                )}
+              </Card>
+            </div>
+          )}
+
+          {/* Step 4: Territory Rights */}
+          {currentStep === 4 && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Territory Rights</h3>
+                <p className="text-base text-[#B3B3B3]">Control where your release is available. Worldwide is selected by default.</p>
+              </div>
+
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <h4 className="font-semibold text-white">World Wide Release</h4>
+                    <p className="text-sm text-[#B3B3B3]">This release will distribute to all current and future territories in the world. De-select to choose specific territories.</p>
+                  </div>
+                  <button onClick={() => setWorldwide((w) => !w)} className={`relative w-14 h-7 rounded-full transition-colors flex-shrink-0 ml-4 ${worldwide ? 'bg-[#FF6B00]' : 'bg-[#333]'}`}>
+                    <span className={`absolute top-1.5 w-4 h-4 rounded-full bg-white transition-transform ${worldwide ? 'translate-x-8' : 'translate-x-1'}`} />
+                  </button>
+                </label>
+              </Card>
+
+              {!worldwide && (
+                <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                  <h4 className="font-semibold text-white">Select Territories</h4>
+                  <p className="text-sm text-[#B3B3B3]">Enter comma-separated territory names or ISO codes to include. Any new territories will need to be added manually via future updates.</p>
+                  <Textarea
+                    placeholder="e.g. Nigeria, Ghana, United States, United Kingdom, South Africa…"
+                    value={excludedTerritories.join(', ')}
+                    onChange={(e) => setExcludedTerritories(e.target.value.split(',').map((t) => t.trim()).filter(Boolean))}
+                    className="min-h-24 border-2 border-[#FF6B00]/30 bg-[#161616] text-white"
+                  />
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Step 5: Partner Selection */}
+          {currentStep === 5 && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Partner Selection</h3>
+                <p className="text-base text-[#B3B3B3]">Choose which distribution partners receive your release. Partners are grouped by category.</p>
+              </div>
+
+              {([
+                { key: 'streaming', label: 'Streaming & Download' },
+                { key: 'ugc', label: 'UGC / Rights Management' },
+                { key: 'whiteLabel', label: 'White Label' },
+                { key: 'technology', label: 'Technology' },
+                { key: 'licensing', label: 'Licensing' },
+                { key: 'backgroundMusic', label: 'Background Music' },
+              ] as const).map(({ key, label }) => {
+                const all = PARTNER_GROUPS[key];
+                const selected = selectedPartners[key] || [];
+                const allSelected = selected.length === all.length;
+                return (
+                  <Card key={key} className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="font-semibold text-white">{label}</h4>
+                      <button onClick={() => toggleAllInGroup(key)} className="text-sm text-[#FF6B00] hover:underline">{allSelected ? 'Deselect All' : 'Select All'}</button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {all.map((partner) => {
+                        const isOn = selected.includes(partner);
+                        return (
+                          <button key={partner} onClick={() => togglePartner(key, partner)} className={`px-3 py-1.5 rounded-full text-sm border-2 transition-all ${isOn ? 'border-[#FF6B00] bg-[#FF6B00]/20 text-white' : 'border-[#FF6B00]/20 text-[#B3B3B3] hover:border-[#FF6B00]/50'}`}>
+                            {isOn && <Check className="inline-block w-3 h-3 mr-1" />}{partner}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-[#B3B3B3]">{selected.length} of {all.length} selected</p>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Step 6: Review */}
+          {currentStep === 6 && (
+            <div className="space-y-8">
+              <div>
+                <h3 className="text-2xl font-bold mb-2 text-[#FF6B00]">Review Your Release</h3>
+                <p className="text-base text-[#B3B3B3]">Review your release for any issues before submitting to our review team for a final guidelines check.</p>
+              </div>
+
+              {/* Release Details Summary */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-bold text-white text-lg">Release Details</h4>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-[#B3B3B3]">Title:</span> <span className="font-medium text-white ml-1">{formData.title || '—'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Artist:</span> <span className="font-medium text-white ml-1">{formData.primaryArtist || '—'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Type:</span> <span className="font-medium text-white ml-1">{formData.releaseType?.toUpperCase() || '—'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Genre:</span> <span className="font-medium text-white ml-1">{formData.genre || '—'}</span></div>
+                  {formData.subgenre && <div><span className="text-[#B3B3B3]">Subgenre:</span> <span className="font-medium text-white ml-1">{formData.subgenre}</span></div>}
+                  {formData.labelName && <div><span className="text-[#B3B3B3]">Label:</span> <span className="font-medium text-white ml-1">{formData.labelName}</span></div>}
+                  {formData.catalogNumber && <div><span className="text-[#B3B3B3]">Catalog #:</span> <span className="font-medium text-white ml-1">{formData.catalogNumber}</span></div>}
+                  {formData.copyrightLine && <div><span className="text-[#B3B3B3]">© Line:</span> <span className="font-medium text-white ml-1">{formData.copyrightLine}</span></div>}
+                  {formData.publishingLine && <div><span className="text-[#B3B3B3]">℗ Line:</span> <span className="font-medium text-white ml-1">{formData.publishingLine}</span></div>}
+                  <div><span className="text-[#B3B3B3]">Cover Art:</span> <span className={`font-medium ml-1 ${coverArt || existingArtworkUrl ? 'text-green-400' : 'text-red-400'}`}>{coverArt ? coverArt.name : existingArtworkUrl ? '✓ Uploaded' : '✗ Missing'}</span></div>
+                </div>
+              </Card>
+
+              {/* Tracks Summary */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-bold text-white text-lg">Tracks ({trackDrafts.length})</h4>
+                <div className="space-y-3">
+                  {trackDrafts.map((t, i) => (
+                    <div key={t.id || `rev-track-${i}`} className="flex items-center gap-4 p-3 rounded-lg bg-[#161616]">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0 ${t.audioFile || t.existingAudioName ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-white truncate">{t.title || 'Untitled'}</p>
+                        <p className="text-xs text-[#B3B3B3]">{t.audioFile ? t.audioFile.name : t.existingAudioName || 'No audio'}{t.isrc ? ` · ISRC: ${t.isrc}` : ''}</p>
+                      </div>
+                      <div className="text-xs text-[#B3B3B3] flex-shrink-0">{t.explicitContent ? '🅴 Explicit' : 'Clean'}</div>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+
+              {/* Availability Summary */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-bold text-white text-lg">Availability</h4>
+                <div className="grid md:grid-cols-2 gap-4 text-sm">
+                  <div><span className="text-[#B3B3B3]">Release Date:</span> <span className={`font-medium ml-1 ${formData.releaseDate ? 'text-white' : 'text-red-400'}`}>{formData.releaseDate || '✗ Not set'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Pre-Order:</span> <span className="font-medium text-white ml-1">{availabilityData.preOrderEnabled ? `Yes – ${availabilityData.preOrderDate || 'date TBD'}` : 'No'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Exclusive:</span> <span className="font-medium text-white ml-1">{availabilityData.exclusiveEnabled ? `${availabilityData.exclusivePartner || 'TBD'} (${availabilityData.exclusiveStartDate || '?'} – ${availabilityData.exclusiveEndDate || '?'})` : 'No'}</span></div>
+                  <div><span className="text-[#B3B3B3]">Custom Time:</span> <span className="font-medium text-white ml-1">{availabilityData.useCustomTime ? availabilityData.releaseTime || 'Set' : 'Midnight (default)'}</span></div>
+                </div>
+              </Card>
+
+              {/* Territory Summary */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-3">
+                <h4 className="font-bold text-white text-lg">Territory Rights</h4>
+                <p className="text-sm text-white">{worldwide ? '🌍 Worldwide (all territories)' : `${excludedTerritories.length > 0 ? excludedTerritories.join(', ') : 'No territories selected'}`}</p>
+              </Card>
+
+              {/* Partners Summary */}
+              <Card className="border-2 border-[#FF6B00]/20 bg-[#0A0A0A]/50 p-6 space-y-4">
+                <h4 className="font-bold text-white text-lg">Distribution Partners</h4>
+                {(Object.entries(selectedPartners) as [keyof typeof PARTNER_GROUPS, string[]][]).map(([key, partners]) =>
+                  partners.length > 0 ? (
+                    <div key={key}>
+                      <p className="text-xs font-semibold text-[#FF6B00] uppercase mb-2">{key}</p>
+                      <div className="flex flex-wrap gap-2">
+                        {partners.map((p) => (
+                          <span key={p} className="px-2 py-1 text-xs rounded-full border border-[#FF6B00]/30 bg-[#FF6B00]/10 text-white">{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null
+                )}
+                {Object.values(selectedPartners).every((arr) => arr.length === 0) && (
+                  <p className="text-sm text-red-400">No partners selected. Go back to Step 5 to choose distribution partners.</p>
+                )}
+              </Card>
+
+              {/* Status */}
+              <Card className="p-4 bg-green-500/10 border-2 border-green-500/30">
+                <div className="flex gap-3">
+                  <Check className="w-5 h-5 text-green-400 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-semibold text-green-400 mb-1">{isEditMode ? 'Ready to Update' : 'Ready to Submit'}</p>
+                    <p className="text-sm text-[#B3B3B3]">
+                      {isEditMode
+                        ? 'Your changes will be saved and resubmitted for distribution.'
+                        : 'Your release will be reviewed by our team before going live on selected platforms.'}
+                    </p>
+                  </div>
+                </div>
+              </Card>
             </div>
           )}
 
@@ -1649,7 +2292,7 @@ export function UploadRelease() {
           )}
 
           {/* Step 3: Distribution */}
-          {currentStep === 3 && (
+          {currentStep === 99 && (
             <div className="space-y-8">
               <div>
                 <h3 className={`text-2xl font-bold mb-2 text-[#FF6B00]`}>Select Distribution Platforms</h3>
@@ -1710,170 +2353,9 @@ export function UploadRelease() {
             </div>
           )}
 
-          {/* Step 4: Review */}
-          {currentStep === 4 && (
-            <div className="space-y-8">
-              <div>
-                <h3 className={`text-2xl font-bold mb-2 text-[#FF6B00]`}>Review Your Release</h3>
-                <p className={`text-base ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>
-                  Please verify all information is correct before submitting for distribution.
-                </p>
-              </div>
 
-              <div className="space-y-8">
-                {/* Files */}
-                <div>
-                  <h4 className={`text-lg font-bold mb-4 text-[#FF6B00]`}>✓ Uploaded Files</h4>
-                  <div className="grid md:grid-cols-2 gap-4">
-                    {trackDrafts.map((track, index) => (
-                      <Card key={track.id || `review-track-file-${index}`} className={`p-5 border-2 ${isLabelDashboard ? 'border-green-500/30 bg-green-500/5' : 'border-green-300 bg-green-50'}`}>
-                        <div className="flex items-center gap-4">
-                          <div className={`w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0 ${isLabelDashboard ? 'bg-green-500/20' : 'bg-green-100'}`}>
-                            <FileAudio className={`w-7 h-7 ${isLabelDashboard ? 'text-green-400' : 'text-green-600'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className={`font-semibold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Track {track.trackNumber}</p>
-                            <p className={`text-sm truncate ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>{track.audioFile?.name || track.existingAudioName || 'Not uploaded'}</p>
-                          </div>
-                        </div>
-                      </Card>
-                    ))}
-                    <Card className={`p-5 border-2 ${isLabelDashboard ? 'border-green-500/30 bg-green-500/5' : 'border-green-300 bg-green-50'}`}>
-                      <div className="flex items-center gap-4">
-                        <div className={`w-14 h-14 rounded-lg flex items-center justify-center flex-shrink-0 ${isLabelDashboard ? 'bg-green-500/20' : 'bg-green-100'}`}>
-                          <ImageIcon className={`w-7 h-7 ${isLabelDashboard ? 'text-green-400' : 'text-green-600'}`} />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className={`font-semibold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>Cover Art</p>
-                          <p className={`text-sm truncate ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>{coverArt?.name || (existingArtworkUrl ? 'Current cover' : 'Not uploaded')}</p>
-                        </div>
-                      </div>
-                    </Card>
-                  </div>
-                </div>
-
-                {/* Release Info */}
-                <div>
-                  <h4 className={`text-lg font-bold mb-4 text-[#FF6B00]`}>✓ Release Information</h4>
-                  <Card className={`p-6 border-2 ${isLabelDashboard ? 'border-[#FF6B00]/20 bg-[#0A0A0A]/50' : 'border-[#FF6B00]/20 bg-[#0A0A0A]'}`}>
-                    <div className="grid md:grid-cols-2 gap-6 text-sm">
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Release Type</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{formData.releaseType?.toUpperCase() || 'Not provided'}</span>
-                      </div>
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Release Title</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{formData.title || 'Not provided'}</span>
-                      </div>
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Primary Artist</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{formData.primaryArtist || 'Not provided'}</span>
-                      </div>
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Genre</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{formData.genre?.toUpperCase() || 'Not provided'}</span>
-                      </div>
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Release Date</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{formData.releaseDate || 'Not provided'}</span>
-                      </div>
-                      <div>
-                        <span className={`font-semibold block mb-1 ${isLabelDashboard ? 'text-[#B3B3B3]' : 'text-[#B3B3B3]'}`}>Language</span>
-                        <span className={`text-lg font-bold ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{(formData.language || '').charAt(0).toUpperCase() + (formData.language || '').slice(1) || 'Not provided'}</span>
-                      </div>
-                    </div>
-                  </Card>
-                </div>
-
-                <div>
-                  <h4 className={`text-lg font-bold mb-4 ${isLabelDashboard ? 'text-white' : 'text-white'}`}>✓ Track Listing</h4>
-                  <div className="space-y-4">
-                    {trackDrafts.map((track, index) => (
-                      <Card key={track.id || `review-track-${index}`} className="p-4">
-                        <div className="grid md:grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-[#B3B3B3]">Track:</span>{' '}
-                            <span className="font-medium">{track.title || 'Not provided'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Track No / Disc:</span>{' '}
-                            <span className="font-medium">{track.trackNumber} / {track.discNumber}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Version:</span>{' '}
-                            <span className="font-medium">{track.version || 'Not provided'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Duration:</span>{' '}
-                            <span className="font-medium">{formatDuration(track.duration)}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">ISRC:</span>{' '}
-                            <span className="font-medium">{track.isrc || (track.isrcRequested ? 'Requested from admin' : 'Not provided')}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Producer:</span>{' '}
-                            <span className="font-medium">{track.producer || 'Not provided'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Composer:</span>{' '}
-                            <span className="font-medium">{track.composer || 'Not provided'}</span>
-                          </div>
-                          <div>
-                            <span className="text-[#B3B3B3]">Explicit:</span>{' '}
-                            <span className="font-medium">{track.explicitContent ? 'Yes' : 'No'}</span>
-                          </div>
-                        </div>
-                        <div className="mt-4 rounded-lg bg-[#0A0A0A] p-3 text-sm text-[#B3B3B3] whitespace-pre-wrap">
-                          {track.lyrics || 'No lyrics provided'}
-                        </div>
-                      </Card>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Platforms */}
-                <div>
-                  <h4 className={`text-lg font-bold mb-4 text-[#FF6B00]`}>✓ Distribution Platforms ({selectedPlatforms.length})</h4>
-                  <Card className={`p-6 border-2 ${isLabelDashboard ? 'border-[#FF6B00]/20 bg-[#0A0A0A]/50' : 'border-[#FF6B00]/20 bg-[#0A0A0A]'}`}>
-                    <div className="grid md:grid-cols-3 lg:grid-cols-4 gap-3">
-                      {selectedPlatforms.map((platformId) => {
-                        const platform = platforms.find((p) => p.id === platformId);
-                        if (!platform) return null;
-                        return (
-                          <div key={platformId} className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-[#FF6B00]/30 bg-[#FF6B00]/5">
-                            <div className="flex items-center justify-center h-12">
-                              <MusicPlatformLogos platforms={[platform.id]} size={32} hideLabels compact />
-                            </div>
-                            <span className={`text-xs font-bold text-center ${isLabelDashboard ? 'text-white' : 'text-white'}`}>{platform.name}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Card>
-                </div>
-
-                <Card className="p-4 bg-green-50 border-green-200">
-                  <div className="flex gap-3">
-                    <Check className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <p className="text-sm font-medium text-green-900 mb-1">
-                        {isEditMode ? 'Ready to Update' : 'Ready to Submit'}
-                      </p>
-                      <p className="text-sm text-green-800">
-                        {isEditMode
-                          ? 'Your changes will be saved and any new distribution selections will be submitted.'
-                          : 'Your release will be reviewed and distributed to all selected platforms.'}
-                      </p>
-                    </div>
-                  </div>
-                </Card>
-              </div>
-            </div>
-          )}
-
-          {/* Step 5: Payment */}
-          {currentStep === 5 && (
+          {/* Step 7: Payment */}
+          {currentStep === 7 && (
             <div className="space-y-6">
               <div>
                 <h3 className="text-xl font-semibold mb-1">Complete Your Order</h3>
@@ -1969,7 +2451,7 @@ export function UploadRelease() {
               )}
 
               <div className="flex items-center justify-between pt-4 border-t border-[#FF6B00]/20">
-                <Button variant="outline" onClick={() => setCurrentStep(4)} disabled={isProcessingPayment || isSubmitting}>
+                <Button variant="outline" onClick={() => setCurrentStep(6)} disabled={isProcessingPayment || isSubmitting}>
                   <ChevronLeft className="w-4 h-4 mr-2" />
                   Back to Review
                 </Button>
@@ -2000,19 +2482,21 @@ export function UploadRelease() {
               Previous
             </Button>
 
-            {currentStep < 4 ? (
+            {currentStep < 6 ? (
               <Button
                 onClick={nextStep}
                 disabled={
                   (currentStep === 1 && !step1Ready) ||
                   (currentStep === 2 && !step2Ready) ||
-                  (currentStep === 3 && !step3Ready)
+                  (currentStep === 3 && !step3Ready) ||
+                  (currentStep === 4 && !step4Ready) ||
+                  (currentStep === 5 && !step5Ready)
                 }
               >
                 Next
                 <ChevronRight className="w-4 h-4 ml-2" />
               </Button>
-            ) : currentStep === 4 ? (
+            ) : currentStep === 6 ? (
               <Button className="bg-[#FF6B00] hover:bg-[#e05e00] text-white" onClick={enterPaymentStep} disabled={isLoadingFee}>
                 {isLoadingFee ? 'Loading…' : (isEditMode ? 'Review Payment' : 'Proceed to Payment')}
                 <CreditCard className="w-4 h-4 ml-2" />

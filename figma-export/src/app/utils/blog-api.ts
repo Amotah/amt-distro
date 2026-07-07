@@ -1,4 +1,4 @@
-import { projectId } from '../../../utils/supabase/info';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
 // BlogPost type copied from backend (keep in sync if changed)
 export interface BlogPost {
@@ -18,7 +18,7 @@ export interface BlogPost {
   updatedAt: string;
 }
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 
 export async function getPublishedBlogPosts(): Promise<BlogPost[]> {
   let response: Response;

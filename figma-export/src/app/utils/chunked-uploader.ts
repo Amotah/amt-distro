@@ -1,7 +1,8 @@
 import { projectId } from '/utils/supabase/info';
 import { supabase } from '/utils/supabase/client';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 
 // Legacy option retained for API compatibility. Direct uploads no longer split files client-side.
 const DEFAULT_CHUNK_SIZE = 512 * 1024;

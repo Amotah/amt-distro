@@ -1,8 +1,8 @@
-import { projectId } from '../../../utils/supabase/info';
 import { getStoredAccessToken } from './auth-session';
 import type { UserProfile } from './user-api';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 
 export type BillingPlan = 'artist' | 'super_artist' | 'partner' | 'promotion' | 'release';
 export type BillingPeriod = 'monthly' | 'yearly';

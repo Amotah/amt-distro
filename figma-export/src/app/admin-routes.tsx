@@ -27,6 +27,7 @@ const AdminSubscriptions = lazy(() => import('./components/admin/AdminSubscripti
 const AdminCoupons = lazy(() => import('./components/admin/AdminCoupons').then((module) => ({ default: module.AdminCoupons })));
 const AdminCopyright = lazy(() => import('./components/admin/AdminCopyright').then((module) => ({ default: module.AdminCopyright })));
 const AdminDisputes = lazy(() => import('./components/admin/AdminDisputes').then((module) => ({ default: module.AdminDisputes })));
+const AdminSupport = lazy(() => import('./components/admin/AdminSupport').then((module) => ({ default: module.AdminSupport })));
 const AdminBankAccounts = lazy(() => import('./components/admin/AdminBankAccounts').then((module) => ({ default: module.AdminBankAccounts })));
 const ArtistLabelManagement = lazy(() => import('./components/admin/ArtistLabelManagement').then((module) => ({ default: module.ArtistLabelManagement })));
 const UserActivityLog = lazy(() => import('./components/admin/UserActivityLog').then((module) => ({ default: module.UserActivityLog })));
@@ -38,10 +39,18 @@ const SystemConfigPanel = lazy(() => import('./components/admin/SystemConfigPane
 const FinancialDashboard = lazy(() => import('./components/admin/FinancialDashboard').then((module) => ({ default: module.FinancialDashboard })));
 const BankReconciliation = lazy(() => import('./components/admin/BankReconciliation').then((module) => ({ default: module.BankReconciliation })));
 const AccountingLedger = lazy(() => import('./components/admin/AccountingLedger').then((module) => ({ default: module.AccountingLedger })));
+const TrialBalanceReport = lazy(() => import('./components/admin/TrialBalanceReport').then((module) => ({ default: module.TrialBalanceReport })));
+const BalanceSheetReport = lazy(() => import('./components/admin/BalanceSheetReport').then((module) => ({ default: module.BalanceSheetReport })));
+const IncomeStatementReport = lazy(() => import('./components/admin/IncomeStatementReport').then((module) => ({ default: module.IncomeStatementReport })));
 const PayrollManagement = lazy(() => import('./components/admin/PayrollManagement').then((module) => ({ default: module.PayrollManagement })));
 const ExpenseManagement = lazy(() => import('./components/admin/ExpenseManagement').then((module) => ({ default: module.ExpenseManagement })));
 const HRDashboard = lazy(() => import('./components/admin/HRDashboard').then((module) => ({ default: module.HRDashboard })));
+const AdminInternalUsers = lazy(() => import('./components/admin/AdminInternalUsers').then((module) => ({ default: module.AdminInternalUsers })));
+const AdminAccessControl = lazy(() => import('./components/admin/AdminAccessControl').then((module) => ({ default: module.AdminAccessControl })));
+const StaffPortal = lazy(() => import('./components/staff/StaffPortal').then((module) => ({ default: module.StaffPortal })));
+const StaffPortalManagement = lazy(() => import('./components/admin/StaffPortalManagement').then((module) => ({ default: module.StaffPortalManagement })));
 import { AdminProvider } from './contexts/AdminContext';
+import { useAdmin } from './contexts/AdminContext';
 
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
@@ -49,6 +58,16 @@ function withSuspense(element: React.ReactNode) {
 
 // Protected Route Component
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
+  const { adminUser, isLoading } = useAdmin();
+
+  if (isLoading) {
+    return <RouteTransitionLoader />;
+  }
+
+  if (!adminUser) {
+    return <Navigate to="/admin/login" replace />;
+  }
+
   const mustChange = sessionStorage.getItem('mustChangePassword') === 'true';
   if (mustChange) {
     return <Navigate to="/admin/change-password" replace />;
@@ -185,6 +204,10 @@ export const createAdminRouter = () => {
           element: withSuspense(<AdminDisputes />),
         },
         {
+          path: 'support',
+          element: withSuspense(<AdminSupport />),
+        },
+        {
           path: 'bank-accounts',
           element: withSuspense(<AdminBankAccounts />),
         },
@@ -221,6 +244,18 @@ export const createAdminRouter = () => {
           element: withSuspense(<AccountingLedger />),
         },
         {
+          path: 'trial-balance',
+          element: withSuspense(<TrialBalanceReport />),
+        },
+        {
+          path: 'balance-sheet',
+          element: withSuspense(<BalanceSheetReport />),
+        },
+        {
+          path: 'income-statement',
+          element: withSuspense(<IncomeStatementReport />),
+        },
+        {
           path: 'payroll',
           element: withSuspense(<PayrollManagement />),
         },
@@ -232,7 +267,29 @@ export const createAdminRouter = () => {
           path: 'expenses',
           element: withSuspense(<ExpenseManagement />),
         },
+        {
+          path: 'internal-users',
+          element: withSuspense(<AdminInternalUsers />),
+        },
+        {
+          path: 'access-control',
+          element: withSuspense(<AdminAccessControl />),
+        },
+        {
+          path: 'staff-portal-management',
+          element: withSuspense(<StaffPortalManagement />),
+        },
       ],
+    },
+    {
+      path: '/staff-portal',
+      element: (
+        <AdminProvider>
+          <ProtectedAdminRoute>
+            {withSuspense(<StaffPortal />)}
+          </ProtectedAdminRoute>
+        </AdminProvider>
+      ),
     },
     {
       path: '*',

@@ -20,6 +20,11 @@ import * as adminService from "./admin-service.tsx";
 import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
+import * as supportService from "./support-service.tsx";
+
+const DEFAULT_ADMIN_EMAIL = Deno.env.get('DEFAULT_ADMIN_EMAIL') ?? 'admin@amtdistro.com';
+const DEFAULT_ADMIN_PASSWORD = Deno.env.get('DEFAULT_ADMIN_PASSWORD') ?? 'admin';
+const DEFAULT_ADMIN_USERNAME = Deno.env.get('DEFAULT_ADMIN_USERNAME') ?? 'admin';
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -92,9 +97,9 @@ app.post('/make-server-79198001/init-admin', async (c) => {
       success: true, 
       message: 'Admin user initialized',
       credentials: {
-        username: 'admin',
-        email: 'admin@amtdistro.com',
-        password: 'admin'
+        username: DEFAULT_ADMIN_USERNAME,
+        email: DEFAULT_ADMIN_EMAIL,
+        password: DEFAULT_ADMIN_PASSWORD
       }
     });
   } catch (error: any) {
@@ -1060,6 +1065,107 @@ app.put("/make-server-79198001/users/me", verifyAuth, async (c) => {
   } catch (error) {
     console.error('Error updating user profile:', error);
     return c.json({ error: `Failed to update user profile: ${error.message}` }, 500);
+  }
+});
+
+// Support ticket routes
+app.get('/make-server-79198001/support/tickets', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const tickets = await supportService.getSupportTicketsForUser(userId);
+    return c.json({ tickets });
+  } catch (error) {
+    console.error('Error fetching support tickets:', error);
+    return c.json({ error: `Failed to fetch support tickets: ${error.message}` }, 500);
+  }
+});
+
+app.post('/make-server-79198001/support/tickets', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+    const user = await userService.getUserByUserId(userId);
+
+    if (!user) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const ticket = await supportService.createSupportTicket({
+      userId,
+      userEmail: user.email,
+      userName:
+        [user.firstName, user.lastName].filter(Boolean).join(' ')
+        || ('artistName' in user ? user.artistName : '')
+        || ('labelName' in user ? user.labelName : '')
+        || user.email,
+      userRole: user.role,
+      subject: typeof body.subject === 'string' ? body.subject : '',
+      category: body.category,
+      message: typeof body.message === 'string' ? body.message : '',
+      priority: body.priority,
+    });
+
+    return c.json({ ticket }, 201);
+  } catch (error) {
+    console.error('Error creating support ticket:', error);
+    return c.json({ error: `Failed to create support ticket: ${error.message}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/support/tickets/:ticketId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const ticketId = c.req.param('ticketId');
+    const ticket = await supportService.getSupportTicketForUser(ticketId, userId);
+
+    if (!ticket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket });
+  } catch (error) {
+    console.error('Error fetching support ticket:', error);
+    return c.json({ error: `Failed to fetch support ticket: ${error.message}` }, 500);
+  }
+});
+
+app.post('/make-server-79198001/support/tickets/:ticketId/messages', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+    const user = await userService.getUserByUserId(userId);
+
+    if (!user) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const updatedTicket = await supportService.addUserReply(ticketId, userId, user.email, body.message);
+    if (!updatedTicket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket: updatedTicket });
+  } catch (error) {
+    console.error('Error adding support message:', error);
+    return c.json({ error: `Failed to add support message: ${error.message}` }, 500);
+  }
+});
+
+app.patch('/make-server-79198001/support/tickets/:ticketId/close', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const ticketId = c.req.param('ticketId');
+    const updatedTicket = await supportService.closeUserTicket(ticketId, userId);
+
+    if (!updatedTicket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket: updatedTicket });
+  } catch (error) {
+    console.error('Error closing support ticket:', error);
+    return c.json({ error: `Failed to close support ticket: ${error.message}` }, 500);
   }
 });
 
@@ -2491,6 +2597,90 @@ app.get("/make-server-79198001/admin/users", verifyAuth, verifyAdmin, requirePer
   } catch (error) {
     console.error('Error fetching admin users:', error);
     return c.json({ error: `Failed to fetch admin users: ${error.message}` }, 500);
+  }
+});
+
+// Support tickets
+app.get('/make-server-79198001/admin/support/stats', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
+  try {
+    const stats = await supportService.getSupportTicketStats();
+    return c.json({ stats });
+  } catch (error) {
+    console.error('Error fetching support stats:', error);
+    return c.json({ error: `Failed to fetch support stats: ${error.message}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/support/tickets', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
+  try {
+    const tickets = await supportService.listAllSupportTickets();
+    return c.json({ tickets });
+  } catch (error) {
+    console.error('Error fetching support tickets:', error);
+    return c.json({ error: `Failed to fetch support tickets: ${error.message}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
+  try {
+    const ticketId = c.req.param('ticketId');
+    const ticket = await supportService.getSupportTicket(ticketId);
+
+    if (!ticket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket });
+  } catch (error) {
+    console.error('Error fetching support ticket:', error);
+    return c.json({ error: `Failed to fetch support ticket: ${error.message}` }, 500);
+  }
+});
+
+app.patch('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('support.manage'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+
+    const ticket = await supportService.updateSupportTicket(ticketId, {
+      status: body.status,
+      priority: body.priority,
+      assignedAdminId: body.assignedAdminId,
+      adminNotes: body.adminNotes,
+    }, adminUserId);
+
+    if (!ticket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket });
+  } catch (error) {
+    console.error('Error updating support ticket:', error);
+    return c.json({ error: `Failed to update support ticket: ${error.message}` }, 500);
+  }
+});
+
+app.post('/make-server-79198001/admin/support/tickets/:ticketId/messages', verifyAuth, verifyAdmin, requirePermission('support.manage'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const ticketId = c.req.param('ticketId');
+    const body = await c.req.json();
+    const adminUser = await userService.getUserByUserId(adminUserId);
+
+    if (!adminUser) {
+      return c.json({ error: 'Admin profile not found' }, 404);
+    }
+
+    const ticket = await supportService.addAdminReply(ticketId, adminUserId, adminUser.email, body.message);
+    if (!ticket) {
+      return c.json({ error: 'Support ticket not found' }, 404);
+    }
+
+    return c.json({ ticket });
+  } catch (error) {
+    console.error('Error replying to support ticket:', error);
+    return c.json({ error: `Failed to reply to support ticket: ${error.message}` }, 500);
   }
 });
 

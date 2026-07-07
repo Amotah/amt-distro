@@ -1,6 +1,6 @@
-import { projectId } from '../../../utils/supabase/info';
 import { getStoredAccessToken } from './auth-session';
 import { getSupabaseClient } from '../../../utils/supabase/client';
+import { BACKEND_API_BASE_URL } from './backend-api-base';
 
 /**
  * User API Client
@@ -8,7 +8,7 @@ import { getSupabaseClient } from '../../../utils/supabase/client';
  * Uses regular user auth token instead of admin token
  */
 
-const API_BASE_URL = `https://${projectId}.supabase.co/functions/v1/make-server-79198001`;
+const API_BASE_URL = BACKEND_API_BASE_URL;
 const USER_PROFILE_ENDPOINTS = ['/users/profile', '/users/me'] as const;
 const RELEASE_CACHE_STORAGE_KEY = 'amtdistro-release-cache';
 

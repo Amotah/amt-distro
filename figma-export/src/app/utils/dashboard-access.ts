@@ -26,7 +26,7 @@ export function getEffectiveDashboardMode(snapshot: DashboardAccessSnapshot): Da
     return 'admin';
   }
 
-  if (snapshot.role === 'partner' || snapshot.subscriptionTier === 'partner') {
+  if (snapshot.role === 'label' || snapshot.role === 'partner' || snapshot.subscriptionTier === 'partner') {
     return 'label';
   }
 

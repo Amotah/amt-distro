@@ -3,13 +3,14 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Mail, Phone, MapPin, Clock, Send, MessageSquare } from 'lucide-react';
 import { toast } from 'sonner';
+import { createPublicSupportTicket } from '../utils/support-api';
 
 const contactMethods = [
   {
     icon: Mail,
     label: 'Email Us',
-    value: 'support@amtdistro.com.ng',
-    href: 'mailto:support@amtdistro.com.ng',
+    value: 'support@amtdistro.com',
+    href: 'mailto:support@amtdistro.com',
     description: 'For general inquiries and support',
   },
   {
@@ -35,8 +36,22 @@ const contactMethods = [
   },
 ];
 
+const categoryMap: Record<string, any> = {
+  general: 'question',
+  support: 'technical_issue',
+  billing: 'billing_inquiry',
+  partnership: 'feature_request',
+  feedback: 'other',
+};
+
 export function ContactUs() {
-  const [form, setForm] = useState({ name: '', email: '', subject: '', message: '' });
+  const [form, setForm] = useState({ 
+    name: '', 
+    email: '', 
+    subject: '', 
+    message: '',
+    category: 'general'
+  });
   const [sending, setSending] = useState(false);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -46,17 +61,33 @@ export function ContactUs() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!form.name.trim() || !form.email.trim() || !form.message.trim()) {
+    if (!form.name.trim() || !form.email.trim() || !form.message.trim() || !form.subject.trim()) {
       toast.error('Please fill in all required fields.');
       return;
     }
 
     setSending(true);
-    // Simulate send — replace with real endpoint when ready
-    await new Promise((r) => setTimeout(r, 1200));
-    setSending(false);
-    toast.success('Message sent! We\'ll get back to you within 24 hours.');
-    setForm({ name: '', email: '', subject: '', message: '' });
+    try {
+      // Create support ticket via public API
+      const ticket = await createPublicSupportTicket(
+        form.email,
+        {
+          subject: form.subject || 'Contact Form Submission',
+          category: categoryMap[form.category] || 'question',
+          message: `From: ${form.name}\n\n${form.message}`,
+          priority: 'normal',
+        }
+      );
+
+      toast.success('Message sent! We\'ll get back to you within 24 hours.');
+      toast.info(`Your ticket number is: ${ticket.srNumber}`);
+      setForm({ name: '', email: '', subject: '', message: '', category: 'general' });
+    } catch (error) {
+      console.error('Error sending message:', error);
+      toast.error(error instanceof Error ? error.message : 'Failed to send message. Please try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (
@@ -145,23 +176,39 @@ export function ContactUs() {
               </div>
 
               <div>
-                <label htmlFor="contact-subject" className="mb-1.5 block text-xs font-medium text-[#B3B3B3]">
-                  Subject
+                <label htmlFor="contact-category" className="mb-1.5 block text-xs font-medium text-[#B3B3B3]">
+                  Category <span className="text-[#FF6B00]">*</span>
                 </label>
                 <select
-                  id="contact-subject"
-                  name="subject"
-                  value={form.subject}
+                  id="contact-category"
+                  name="category"
+                  title="Select inquiry category"
+                  value={form.category}
                   onChange={handleChange}
                   className="w-full rounded-lg border border-white/10 bg-[#0A0A0A] px-4 py-2.5 text-sm text-white outline-none transition focus:border-[#FF6B00]/50 focus:ring-1 focus:ring-[#FF6B00]/30"
                 >
-                  <option value="">Select a topic</option>
                   <option value="general">General Inquiry</option>
                   <option value="support">Technical Support</option>
                   <option value="billing">Billing &amp; Payments</option>
                   <option value="partnership">Partnership Opportunity</option>
                   <option value="feedback">Feedback</option>
                 </select>
+              </div>
+
+              <div>
+                <label htmlFor="contact-subject" className="mb-1.5 block text-xs font-medium text-[#B3B3B3]">
+                  Subject <span className="text-[#FF6B00]">*</span>
+                </label>
+                <input
+                  id="contact-subject"
+                  name="subject"
+                  type="text"
+                  required
+                  value={form.subject}
+                  onChange={handleChange}
+                  placeholder="What is this about?"
+                  className="w-full rounded-lg border border-white/10 bg-[#0A0A0A] px-4 py-2.5 text-sm text-white placeholder-[#666] outline-none transition focus:border-[#FF6B00]/50 focus:ring-1 focus:ring-[#FF6B00]/30"
+                />
               </div>
 
               <div>

@@ -23,6 +23,7 @@ import {
   type UserBankAccount,
 } from '../utils/payment-api';
 import { getStoredAccessToken } from '../utils/auth-session';
+import { BACKEND_API_BASE_URL } from '../utils/backend-api-base';
 
 interface BankAccountSettingsProps {
   onBack: () => void;
@@ -141,7 +142,7 @@ export function BankAccountSettings({ onBack }: BankAccountSettingsProps) {
     try {
       const token = getStoredAccessToken();
       const res = await fetch(
-        `https://vatpvfrbgeatdeypqcrv.supabase.co/functions/v1/make-server-79198001/payments/verify-account`,
+        `${BACKEND_API_BASE_URL}/payments/verify-account`,
         {
           method: 'POST',
           headers: {
