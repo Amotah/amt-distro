@@ -208,40 +208,16 @@ export function Hero() {
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-3xl border border-[#FF6B00]/12 bg-[#0D0D0D] px-0 py-6">
-            <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#111111] to-transparent" />
-            <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#111111] to-transparent" />
-            <div className="hero-platform-marquee-track flex w-max items-center gap-6 px-6">
-              {[0, 1].map((copy) => (
-                <div key={copy} className="flex shrink-0 items-center gap-6 pr-6">
-                  {HERO_PLATFORMS.map((platform, index) => (
-                    <div
-                      key={`${copy}-${platform.name}-${index}`}
-                      className={`hero-platform-card group relative flex h-[128px] w-[236px] shrink-0 items-center justify-center overflow-hidden rounded-3xl border shadow-[0_16px_36px_rgba(0,0,0,0.36)] transition-transform duration-300 hover:-translate-y-1 ${platform.surfaceClassName}`}
-                      aria-label={platform.name}
-                      title={platform.name}
-                    >
-                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0))]" />
-                      {platform.badge && (
-                        <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/16 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/92">
-                          {platform.badge}
-                        </span>
-                      )}
-                      {platform.logoNode ? (
-                        <div className="relative z-10 flex w-full items-center justify-center px-4">
-                          {platform.logoNode}
-                        </div>
-                      ) : (
-                        <img
-                          src={platform.logo}
-                          alt={platform.name}
-                          className={`relative z-10 w-auto object-contain drop-shadow-[0_3px_10px_rgba(0,0,0,0.25)] ${platform.logoClassName || 'h-14 max-w-[78%]'}`}
-                          loading="lazy"
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
+          <div className="relative overflow-hidden rounded-3xl border border-[#FF6B00]/12 bg-[#0D0D0D] px-6 py-6">
+            <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6">
+              {HERO_PLATFORMS.map((platform, index) => (
+                <span
+                  key={`${platform.name}-${index}`}
+                  className="text-sm font-semibold text-white/80 hover:text-[#FFD600] transition-colors duration-200"
+                  title={platform.name}
+                >
+                  {platform.name}
+                </span>
               ))}
             </div>
           </div>

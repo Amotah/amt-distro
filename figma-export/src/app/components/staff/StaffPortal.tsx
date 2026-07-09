@@ -68,6 +68,24 @@ export function StaffPortal() {
   );
 }
 
+function formatPayslipAmount(amount: number, currencyCode = 'NGN') {
+  try {
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: String(currencyCode || 'NGN').toUpperCase(),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(amount || 0));
+  } catch {
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(amount || 0));
+  }
+}
+
 // ─ Leave Tab ─────────────────────────────────────────────────────────────
 function LeaveTab() {
   const [applications, setApplications] = useState<LeaveApplication[]>([]);
@@ -90,7 +108,7 @@ function LeaveTab() {
       setApplications(appResult);
       setBalances(balResult);
     } catch (error) {
-      toast.error('Failed to load leave data');
+      toast.error(error instanceof Error ? error.message : 'Failed to load leave data');
     } finally {
       setLoading(false);
     }
@@ -325,7 +343,7 @@ function PayslipsTab() {
       const result = await getMyPayslips(selectedYear);
       setPayslips(result);
     } catch (error) {
-      toast.error('Failed to load payslips');
+      toast.error(error instanceof Error ? error.message : 'Failed to load payslips');
     } finally {
       setLoading(false);
     }
@@ -337,7 +355,7 @@ function PayslipsTab() {
       await downloadPayslip(payslipId);
       toast.success('Payslip downloaded');
     } catch (error) {
-      toast.error('Failed to download payslip');
+      toast.error(error instanceof Error ? error.message : 'Failed to download payslip');
     } finally {
       setDownloading(null);
     }
@@ -372,23 +390,56 @@ function PayslipsTab() {
             <div key={p.id} className="rounded-lg bg-[#1a1f35] border border-[#7B61FF]/20 p-4">
               <div className="flex items-center justify-between">
                 <div className="flex-1">
-                  <div className="font-semibold mb-1">{p.payPeriod}</div>
+                  <div className="mb-1 flex flex-wrap items-center gap-2">
+                    <div className="font-semibold">{p.payPeriod}</div>
+                    {p.payGrade ? (
+                      <span className="rounded-full bg-[#7B61FF]/15 px-2 py-1 text-xs font-medium text-[#C4B5FD]">
+                        {p.payGrade}
+                      </span>
+                    ) : null}
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${
+                      p.status === 'paid'
+                        ? 'bg-[#22D3A1]/15 text-[#22D3A1]'
+                        : p.status === 'draft'
+                        ? 'bg-[#F59E0B]/15 text-[#F59E0B]'
+                        : 'bg-[#7B61FF]/15 text-[#7B61FF]'
+                    }`}>
+                      {p.status.replace('_', ' ')}
+                    </span>
+                  </div>
                   <div className="text-sm text-[#A0A7B8] mb-2">
                     Paid on {new Date(p.payDate).toLocaleDateString()}
                   </div>
-                  <div className="grid grid-cols-3 gap-4 text-sm">
+                  {(p.role || p.department) ? (
+                    <div className="text-xs text-[#A0A7B8] mb-3">
+                      {[p.role, p.department].filter(Boolean).join(' • ')}
+                    </div>
+                  ) : null}
+                  <div className="grid grid-cols-2 gap-4 text-sm md:grid-cols-5">
                     <div>
-                      <div className="text-[#A0A7B8]">Salary</div>
-                      <div className="font-semibold text-[#22D3A1]">{p.currency} {(p.baseSalary / 100).toFixed(2)}</div>
+                      <div className="text-[#A0A7B8]">Base Salary</div>
+                      <div className="font-semibold text-[#22D3A1]">{formatPayslipAmount(p.baseSalary, p.currency)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[#A0A7B8]">Allowances</div>
+                      <div className="font-semibold text-[#60A5FA]">{formatPayslipAmount(p.allowances, p.currency)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[#A0A7B8]">Gross Pay</div>
+                      <div className="font-semibold text-white">{formatPayslipAmount(p.grossSalary ?? (p.baseSalary + p.allowances), p.currency)}</div>
+                    </div>
+                    <div>
+                      <div className="text-[#A0A7B8]">PAYE</div>
+                      <div className="font-semibold text-[#F59E0B]">{formatPayslipAmount(p.tax, p.currency)}</div>
                     </div>
                     <div>
                       <div className="text-[#A0A7B8]">Deductions</div>
-                      <div className="font-semibold text-[#F43F5E]">{p.currency} {(p.deductions / 100).toFixed(2)}</div>
+                      <div className="font-semibold text-[#F43F5E]">{formatPayslipAmount(p.deductions, p.currency)}</div>
                     </div>
-                    <div>
-                      <div className="text-[#A0A7B8]">Net Pay</div>
-                      <div className="font-semibold text-[#7B61FF]">{p.currency} {(p.netSalary / 100).toFixed(2)}</div>
-                    </div>
+                  </div>
+                  <div className="mt-3 text-sm">
+                    <span className="text-[#A0A7B8]">Net Pay</span>
+                    <div className="font-semibold text-[#7B61FF]">{formatPayslipAmount(p.netSalary, p.currency)}</div>
                   </div>
                 </div>
                 <button

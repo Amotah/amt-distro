@@ -49,8 +49,73 @@ const DEFAULT_ADMIN_USERNAME = 'admin';
 const DEFAULT_ADMIN_PASSWORD = 'admin';
 const DEFAULT_ADMIN_EMAIL = 'admin@amtdistro.com';
 
+const DEFAULT_SUPERADMIN_PERMISSIONS = ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'];
+
 function isDefaultAdminCredentials(emailOrUsername: string, password: string) {
   return isDefaultAdminAlias(emailOrUsername) && password === DEFAULT_ADMIN_PASSWORD;
+}
+
+function persistAdminSession(adminUser: AdminUser, accessToken?: string) {
+  sessionStorage.setItem('user_role', 'admin');
+  sessionStorage.setItem('user_id', adminUser.userId);
+  sessionStorage.setItem('admin_role', adminUser.role);
+  sessionStorage.setItem('admin_permissions', JSON.stringify(adminUser.permissions || []));
+  sessionStorage.setItem('admin_department', adminUser.department || '');
+  if (accessToken) {
+    sessionStorage.setItem('admin_access_token', accessToken);
+  }
+}
+
+function clearAdminSession() {
+  adminApi.clearAdminToken();
+  sessionStorage.removeItem('admin_access_token');
+  sessionStorage.removeItem('admin_role');
+  sessionStorage.removeItem('admin_permissions');
+  sessionStorage.removeItem('admin_department');
+  sessionStorage.removeItem('mustChangePassword');
+}
+
+function buildFallbackSuperAdmin(id: string): AdminUser {
+  return {
+    id,
+    userId: id,
+    role: 'superadmin',
+    permissions: DEFAULT_SUPERADMIN_PERMISSIONS,
+    department: 'Admin',
+    createdBy: 'system',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function getStoredAdminUser(): AdminUser | null {
+  const role = sessionStorage.getItem('admin_role');
+  const permissionsRaw = sessionStorage.getItem('admin_permissions');
+  const department = sessionStorage.getItem('admin_department') || undefined;
+  const userId = sessionStorage.getItem('user_id') || sessionStorage.getItem('admin_access_token') || '';
+
+  if (!role || !permissionsRaw || !userId) {
+    return null;
+  }
+
+  try {
+    const permissions = JSON.parse(permissionsRaw);
+    if (!Array.isArray(permissions)) {
+      return null;
+    }
+    return {
+      id: userId,
+      userId,
+      role: role as AdminUser['role'],
+      permissions,
+      department,
+      createdBy: 'session',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function AdminProvider({ children }: { children: React.ReactNode }) {
@@ -75,8 +140,7 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         
         if (!session) {
           setAdminUser(null);
-          adminApi.clearAdminToken();
-          sessionStorage.removeItem('mustChangePassword');
+          clearAdminSession();
           setIsLoading(false);
           return;
         }
@@ -90,47 +154,20 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         // Store token
         adminApi.setAdminToken(session.access_token);
 
-        // DISABLED: Strict admin verification on load - will be enabled later
         try {
-          const admins = await adminApi.getAllAdminUsers();
-          
-          // Find current user's admin profile
-          const currentAdmin = admins.find(a => a.userId === session.user.id);
-          
-          if (currentAdmin) {
-            setAdminUser(currentAdmin);
-            sessionStorage.setItem('user_role', 'admin');
-            sessionStorage.setItem('admin_access_token', session.access_token);
-          } else {
-            // User is authenticated - allow them to proceed as a basic admin
-            setAdminUser({
-              id: session.user.id,
-              userId: session.user.id,
-              role: 'superadmin',
-              permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-              department: 'System Administration',
-              createdBy: 'system',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
-            sessionStorage.setItem('user_role', 'admin');
-            sessionStorage.setItem('admin_access_token', session.access_token);
-          }
+          const currentAdmin = await adminApi.getCurrentAdminUser();
+          setAdminUser(currentAdmin);
+          persistAdminSession(currentAdmin, session.access_token);
         } catch (error) {
-          // Allow login even if admin verification fails
-          console.warn('Admin status check encountered an issue but allowing access:', error);
-          setAdminUser({
-            id: session.user.id,
-            userId: session.user.id,
-            role: 'superadmin',
-            permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-            department: 'System Administration',
-            createdBy: 'system',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-          sessionStorage.setItem('user_role', 'admin');
-          sessionStorage.setItem('admin_access_token', session.access_token);
+          console.warn('Admin status check failed:', error);
+          const cachedAdmin = getStoredAdminUser();
+          if (cachedAdmin) {
+            setAdminUser(cachedAdmin);
+            persistAdminSession(cachedAdmin, session.access_token);
+          } else {
+            setAdminUser(null);
+            clearAdminSession();
+          }
         }
       } else {
         // Admin token exists, verify it's still valid (including fallback tokens)
@@ -139,19 +176,10 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         
         try {
           if (isFallbackToken) {
-            // Fallback token - just set admin user without trying to fetch from backend
-            setAdminUser({
-              id: adminToken,
-              userId: adminToken,
-              role: 'superadmin',
-              permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-              department: 'System Administration',
-              createdBy: 'system',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
+            const fallbackAdmin = buildFallbackSuperAdmin(adminToken);
+            setAdminUser(fallbackAdmin);
+            persistAdminSession(fallbackAdmin, adminToken);
           } else {
-            const admins = await adminApi.getAllAdminUsers();
             const { data: { session } } = await supabase.auth.getSession();
             
             if (session) {
@@ -161,51 +189,30 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
                 sessionStorage.removeItem('mustChangePassword');
               }
 
-              const currentAdmin = admins.find(a => a.userId === session.user.id);
-              if (currentAdmin) {
-                setAdminUser(currentAdmin);
-              } else {
-                // User is authenticated but no admin record yet - assign basic permissions
-                setAdminUser({
-                  id: session.user.id,
-                  userId: session.user.id,
-                  role: 'superadmin',
-                  permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-                  department: 'System Administration',
-                  createdBy: 'system',
-                  createdAt: new Date().toISOString(),
-                  updatedAt: new Date().toISOString(),
-                });
-              }
+              const currentAdmin = await adminApi.getCurrentAdminUser();
+              setAdminUser(currentAdmin);
+              persistAdminSession(currentAdmin, session.access_token);
             }
           }
         } catch (error) {
-          // Token verification failed but keep the user logged in
-          console.warn('Error verifying admin token, allowing continued access:', error);
+          console.warn('Error verifying admin token:', error);
           const { data: { session } } = await supabase.auth.getSession();
           if (session) {
-            setAdminUser({
-              id: session.user.id,
-              userId: session.user.id,
-              role: 'superadmin',
-              permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-              department: 'System Administration',
-              createdBy: 'system',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
+            const cachedAdmin = getStoredAdminUser();
+            if (cachedAdmin) {
+              setAdminUser(cachedAdmin);
+              persistAdminSession(cachedAdmin, session.access_token);
+            } else {
+              setAdminUser(null);
+              clearAdminSession();
+            }
           } else if (isFallbackToken) {
-            // Even without a session, if we have a fallback token, keep admin logged in
-            setAdminUser({
-              id: adminToken,
-              userId: adminToken,
-              role: 'superadmin',
-              permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-              department: 'System Administration',
-              createdBy: 'system',
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString(),
-            });
+            const fallbackAdmin = buildFallbackSuperAdmin(adminToken);
+            setAdminUser(fallbackAdmin);
+            persistAdminSession(fallbackAdmin, adminToken);
+          } else {
+            setAdminUser(null);
+            clearAdminSession();
           }
         }
       }
@@ -313,46 +320,22 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       const isFallbackToken = sessionData.access_token.startsWith('fallback-');
       adminApi.setAdminToken(sessionData.access_token);
 
-      // DISABLED: Strict admin verification - will be enabled later
-      // For now, allow login without verification and fetch admin status asynchronously
       try {
-        const admins = await adminApi.getAllAdminUsers();
-        const currentAdmin = admins.find(a => a.userId === sessionData.user.id);
-        
-        if (currentAdmin) {
-          setAdminUser(currentAdmin);
-        } else {
-          // User is authenticated - allow them to proceed as a basic admin without full record
-          // They can use basic functionality until admin record is created
-          setAdminUser({
-            id: sessionData.user.id,
-            userId: sessionData.user.id,
-            role: 'superadmin',
-            permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-            department: 'System Administration',
-            createdBy: 'system',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-          });
-        }
+        const currentAdmin = isFallbackToken
+          ? buildFallbackSuperAdmin(sessionData.user.id)
+          : await adminApi.getCurrentAdminUser();
+
+        setAdminUser(currentAdmin);
+        persistAdminSession(currentAdmin, sessionData.access_token);
       } catch (error) {
-        // Verification failed but allow login anyway - assign basic superadmin permissions
-        console.warn('Admin verification encountered an issue but allowing login:', error);
-        setAdminUser({
-          id: sessionData.user.id,
-          userId: sessionData.user.id,
-          role: 'superadmin',
-          permissions: ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'],
-          department: 'System Administration',
-          createdBy: 'system',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+        console.warn('Admin verification failed:', error);
+        setAdminUser(null);
+        clearAdminSession();
+        throw new Error('Admin access is not enabled for this account.');
       }
     } catch (error) {
       setAdminUser(null);
-      adminApi.clearAdminToken();
-      sessionStorage.removeItem('mustChangePassword');
+      clearAdminSession();
       throw error;
     } finally {
       setIsLoading(false);
@@ -364,9 +347,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     
     try {
       await supabase.auth.signOut();
-      adminApi.clearAdminToken();
       setAdminUser(null);
-      sessionStorage.removeItem('mustChangePassword');
+      clearAdminSession();
     } catch (error) {
       console.error('Logout error:', error);
     } finally {

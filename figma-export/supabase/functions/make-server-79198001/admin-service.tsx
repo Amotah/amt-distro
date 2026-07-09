@@ -8,14 +8,21 @@ import * as userService from './user-service.tsx';
 
 export type AdminRole = 
   | 'superadmin'           // Full access to everything
+  | 'system_admin'         // Elevated system-wide administrator
   | 'admin_operations'     // Daily platform moderation
   | 'admin_finance'        // Royalties, payments, financial data
   | 'admin_content'        // Releases, tracks, distributions
   | 'admin_support'        // User support, disputes
   | 'admin_fraud'          // Fraud detection, security
-  | 'admin_analytics';     // Reports, analytics, insights
+  | 'admin_analytics'      // Reports, analytics, insights
+  | 'hr_manager'
+  | 'hr_specialist'
+  | 'hr_coordinator'
+  | 'payroll_manager'
+  | 'recruitment_officer'
+  | 'staff';
 
-export type Permission = 
+type KnownPermission = 
   // User Management
   | 'users.view'
   | 'users.create'
@@ -74,7 +81,14 @@ export type Permission =
   // System Management
   | 'system.settings'
   | 'system.logs'
-  | 'system.analytics';
+  | 'system.analytics'
+
+  // Frontend-only capability flags used for navigation and visibility
+  | 'support.view';
+
+export type Permission = KnownPermission | (string & {});
+
+export type AdminStatus = 'active' | 'inactive' | 'suspended';
 
 export interface AdminUser {
   id: string;
@@ -82,6 +96,7 @@ export interface AdminUser {
   role: AdminRole;
   permissions: Permission[];
   department?: string;
+  status?: AdminStatus;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -184,21 +199,24 @@ export async function getAllUserActivityLogs(limit = 300): Promise<UserActivityL
 }
 // ── End User Activity Log ──────────────────────────────────────────────────
 
+export const ALL_AVAILABLE_PERMISSIONS: Permission[] = [
+  'users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify',
+  'artists.view', 'artists.edit', 'artists.delete', 'artists.verify',
+  'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown',
+  'distributions.view', 'distributions.retry', 'distributions.cancel',
+  'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage',
+  'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund',
+  'reports.view', 'reports.upload',
+  'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users',
+  'admins.view', 'admins.create', 'admins.edit', 'admins.delete',
+  'system.settings', 'system.logs', 'system.analytics',
+  'support.view',
+];
+
 // Role-Permission Mapping
-const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
-  superadmin: [
-    // All permissions - full access
-    'users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify',
-    'artists.view', 'artists.edit', 'artists.delete', 'artists.verify',
-    'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown',
-    'distributions.view', 'distributions.retry', 'distributions.cancel',
-    'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage',
-    'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund',
-    'reports.view', 'reports.upload',
-    'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users',
-    'admins.view', 'admins.create', 'admins.edit', 'admins.delete',
-    'system.settings', 'system.logs', 'system.analytics',
-  ],
+export const DEFAULT_ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
+  superadmin: [...ALL_AVAILABLE_PERMISSIONS],
+  system_admin: [...ALL_AVAILABLE_PERMISSIONS],
   admin_operations: [
     // Daily platform moderation (NO ROYALTIES ACCESS)
     'users.view', 'users.create',
@@ -234,6 +252,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'releases.view',
     'payments.view',
     'fraud.view',
+    'support.view',
   ],
   admin_fraud: [
     // Fraud detection (NO ROYALTIES ACCESS)
@@ -253,7 +272,70 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     'fraud.view',
     'system.analytics', 'system.logs',
   ],
+  hr_manager: [
+    'users.view', 'users.create', 'users.edit',
+    'payments.view', 'payments.approve',
+    'reports.view',
+    'admins.view',
+  ],
+  hr_specialist: [
+    'users.view', 'users.create', 'users.edit',
+    'payments.view',
+    'reports.view',
+  ],
+  hr_coordinator: [
+    'users.view',
+    'payments.view',
+  ],
+  payroll_manager: [
+    'users.view',
+    'payments.view', 'payments.approve',
+    'reports.view',
+  ],
+  recruitment_officer: [
+    'users.view', 'users.create',
+    'reports.view',
+  ],
+  staff: [],
 };
+
+function normalizeDepartment(department?: string): string {
+  return String(department || '').trim().toLowerCase();
+}
+
+function arraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
+}
+
+function uniquePermissions(permissions: readonly string[] | undefined): Permission[] {
+  return Array.from(new Set((permissions || []).filter((item): item is Permission => typeof item === 'string' && item.trim().length > 0)));
+}
+
+function getDefaultPermissions(role: AdminRole): Permission[] {
+  return uniquePermissions(DEFAULT_ROLE_PERMISSIONS[role] || []);
+}
+
+function getEffectivePermissions(admin: AdminUser): Permission[] {
+  const storedPermissions = uniquePermissions(admin.permissions);
+  if (storedPermissions.length > 0) {
+    return storedPermissions;
+  }
+
+  return getDefaultPermissions(admin.role);
+}
+
+function isElevatedDepartment(department?: string): boolean {
+  const normalized = normalizeDepartment(department);
+  return normalized === 'admin' || normalized === 'administration' || normalized === 'system administration';
+}
+
+export function isAdminActive(admin: AdminUser | null | undefined): admin is AdminUser {
+  return Boolean(admin && admin.status !== 'inactive' && admin.status !== 'suspended');
+}
+
+export function hasElevatedAdminAccess(admin: AdminUser | null | undefined): boolean {
+  return Boolean(admin && (admin.role === 'superadmin' || admin.role === 'system_admin' || isElevatedDepartment(admin.department)));
+}
 
 // Create admin user
 export async function createAdminUser(
@@ -296,8 +378,9 @@ export async function createAdminUser(
     id,
     userId,
     role,
-    permissions: ROLE_PERMISSIONS[role],
+    permissions: getDefaultPermissions(role),
     department,
+    status: 'active',
     createdBy,
     createdAt: now,
     updatedAt: now,
@@ -316,7 +399,33 @@ export async function getAdminUser(userId: string): Promise<AdminUser | null> {
   const adminId = await kv.get<string>(`admin:user:${userId}`);
   if (!adminId) return null;
 
-  return await kv.get<AdminUser>(`admin:${adminId}`);
+  const admin = await kv.get<AdminUser>(`admin:${adminId}`);
+  if (!admin) return null;
+
+  let shouldPersist = false;
+  const normalizedPermissions = uniquePermissions(admin.permissions);
+
+  if (!arraysEqual(admin.permissions || [], normalizedPermissions)) {
+    admin.permissions = normalizedPermissions;
+    shouldPersist = true;
+  }
+
+  if (admin.permissions.length === 0) {
+    admin.permissions = getDefaultPermissions(admin.role);
+    shouldPersist = true;
+  }
+
+  if (!admin.status) {
+    admin.status = 'active';
+    shouldPersist = true;
+  }
+
+  if (shouldPersist) {
+    admin.updatedAt = new Date().toISOString();
+    await kv.set(`admin:${adminId}`, admin);
+  }
+
+  return admin;
 }
 
 // Alias for getAdminUser (used during login)
@@ -338,7 +447,7 @@ export async function updateAdminRole(
 
   const oldRole = admin.role;
   admin.role = newRole;
-  admin.permissions = ROLE_PERMISSIONS[newRole];
+  admin.permissions = getDefaultPermissions(newRole);
   admin.updatedAt = new Date().toISOString();
 
   await kv.set(`admin:${adminId}`, admin);
@@ -381,19 +490,13 @@ export async function hasPermission(
   permission: Permission
 ): Promise<boolean> {
   const admin = await getAdminUser(userId);
-  if (!admin) return false;
+  if (!isAdminActive(admin)) return false;
 
-  const rolePermissions = ROLE_PERMISSIONS[admin.role] || [];
-  if (admin.permissions.length !== rolePermissions.length || admin.permissions.some((item) => !rolePermissions.includes(item))) {
-    admin.permissions = rolePermissions;
-    admin.updatedAt = new Date().toISOString();
-    const adminId = await kv.get<string>(`admin:user:${userId}`);
-    if (adminId) {
-      await kv.set(`admin:${adminId}`, admin);
-    }
+  if (hasElevatedAdminAccess(admin)) {
+    return true;
   }
 
-  return rolePermissions.includes(permission);
+  return getEffectivePermissions(admin).includes(permission);
 }
 
 // Check if user has role
@@ -402,10 +505,10 @@ export async function hasRole(
   role: AdminRole
 ): Promise<boolean> {
   const admin = await getAdminUser(userId);
-  if (!admin) return false;
+  if (!isAdminActive(admin)) return false;
 
-  // Superadmin has access to all roles
-  if (admin.role === 'superadmin') return true;
+  // Elevated administrators can satisfy role checks for protected actions.
+  if (admin.role === 'superadmin' || admin.role === 'system_admin') return true;
 
   return admin.role === role;
 }
@@ -529,7 +632,7 @@ export async function getAllAuditLogs(limit: number = 200): Promise<AuditLog[]> 
 }
 export async function updateAdminActivity(userId: string): Promise<void> {
   const admin = await getAdminUser(userId);
-  if (!admin) return;
+  if (!isAdminActive(admin)) return;
 
   admin.lastActiveAt = new Date().toISOString();
   await kv.set(`admin:${admin.id}`, admin);
@@ -545,12 +648,19 @@ export async function getAdminStats(): Promise<{
 
   const adminsByRole: Record<AdminRole, number> = {
     superadmin: 0,
+    system_admin: 0,
     admin_operations: 0,
     admin_finance: 0,
     admin_content: 0,
     admin_support: 0,
     admin_fraud: 0,
     admin_analytics: 0,
+    hr_manager: 0,
+    hr_specialist: 0,
+    hr_coordinator: 0,
+    payroll_manager: 0,
+    recruitment_officer: 0,
+    staff: 0,
   };
 
   for (const admin of admins) {

@@ -56,7 +56,7 @@ function LeaveApprovalsSection() {
       const data = await getAdminLeaveApplications();
       setApplications(data);
     } catch (err) {
-      toast.error('Failed to load leave applications');
+      toast.error(err instanceof Error ? err.message : 'Failed to load leave applications');
     } finally {
       setLoading(false);
     }

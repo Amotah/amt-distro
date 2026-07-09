@@ -3,7 +3,7 @@ import * as kv from './kv_store.tsx';
 export type SupportStatus = 'open' | 'acknowledged' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed';
 export type SupportPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type SupportCategory = 'bug_report' | 'question' | 'feature_request' | 'billing_inquiry' | 'account_access' | 'technical_issue' | 'other';
-export type SupportSenderType = 'user' | 'admin' | 'system';
+export type SupportSenderType = 'user' | 'admin' | 'system' | 'guest';
 
 export interface SupportMessage {
   id: string;
@@ -105,35 +105,35 @@ export async function createSupportTicket(
   };
 
   // Store ticket in KV
-  await kv.kv_set(`support:ticket:${id}`, ticket);
+  await kv.set(`support:ticket:${id}`, ticket);
   
   // Index for user lookup (if userId exists)
   if (userId) {
-    const userTickets = (await kv.kv_get(`support:user:${userId}:tickets`)) || [];
+    const userTickets = (await kv.get(`support:user:${userId}:tickets`)) || [];
     userTickets.push(id);
-    await kv.kv_set(`support:user:${userId}:tickets`, userTickets);
+    await kv.set(`support:user:${userId}:tickets`, userTickets);
   }
 
   // Index for email lookup
-  const emailTickets = (await kv.kv_get(`support:email:${userEmail}:tickets`)) || [];
+  const emailTickets = (await kv.get(`support:email:${userEmail}:tickets`)) || [];
   emailTickets.push(id);
-  await kv.kv_set(`support:email:${userEmail}:tickets`, emailTickets);
+  await kv.set(`support:email:${userEmail}:tickets`, emailTickets);
 
   // Store in all tickets list
-  const allTickets = (await kv.kv_get('support:all:tickets')) || [];
+  const allTickets = (await kv.get('support:all:tickets')) || [];
   allTickets.push(id);
-  await kv.kv_set('support:all:tickets', allTickets);
+  await kv.set('support:all:tickets', allTickets);
 
   return ticket;
 }
 
 // Get all support tickets for a user
 export async function getUserSupportTickets(userId: string): Promise<SupportTicket[]> {
-  const ticketIds = (await kv.kv_get(`support:user:${userId}:tickets`)) || [];
+  const ticketIds = (await kv.get(`support:user:${userId}:tickets`)) || [];
   const tickets: SupportTicket[] = [];
 
   for (const ticketId of ticketIds) {
-    const ticket = await kv.kv_get(`support:ticket:${ticketId}`);
+    const ticket = await kv.get(`support:ticket:${ticketId}`);
     if (ticket) {
       tickets.push(ticket);
     }
@@ -144,11 +144,11 @@ export async function getUserSupportTickets(userId: string): Promise<SupportTick
 
 // Get all support tickets for an email (for non-logged-in users)
 export async function getEmailSupportTickets(email: string): Promise<SupportTicket[]> {
-  const ticketIds = (await kv.kv_get(`support:email:${email}:tickets`)) || [];
+  const ticketIds = (await kv.get(`support:email:${email}:tickets`)) || [];
   const tickets: SupportTicket[] = [];
 
   for (const ticketId of ticketIds) {
-    const ticket = await kv.kv_get(`support:ticket:${ticketId}`);
+    const ticket = await kv.get(`support:ticket:${ticketId}`);
     if (ticket) {
       tickets.push(ticket);
     }
@@ -159,7 +159,7 @@ export async function getEmailSupportTickets(email: string): Promise<SupportTick
 
 // Get a specific support ticket
 export async function getSupportTicket(ticketId: string): Promise<SupportTicket | null> {
-  return await kv.kv_get(`support:ticket:${ticketId}`);
+  return await kv.get(`support:ticket:${ticketId}`);
 }
 
 // Add a message to a support ticket
@@ -196,7 +196,7 @@ export async function addMessageToTicket(
     ticket.status = 'acknowledged';
   }
 
-  await kv.kv_set(`support:ticket:${ticketId}`, ticket);
+  await kv.set(`support:ticket:${ticketId}`, ticket);
   return ticket;
 }
 
@@ -221,7 +221,7 @@ export async function updateTicketStatus(
     ticket.closedAt = new Date().toISOString();
   }
 
-  await kv.kv_set(`support:ticket:${ticketId}`, ticket);
+  await kv.set(`support:ticket:${ticketId}`, ticket);
   return ticket;
 }
 
@@ -238,7 +238,7 @@ export async function updateTicketPriority(
   ticket.priority = priority;
   ticket.updatedAt = new Date().toISOString();
 
-  await kv.kv_set(`support:ticket:${ticketId}`, ticket);
+  await kv.set(`support:ticket:${ticketId}`, ticket);
   return ticket;
 }
 
@@ -262,7 +262,7 @@ export async function assignTicketToAdmin(
     ticket.status = 'acknowledged';
   }
 
-  await kv.kv_set(`support:ticket:${ticketId}`, ticket);
+  await kv.set(`support:ticket:${ticketId}`, ticket);
   return ticket;
 }
 
@@ -279,17 +279,17 @@ export async function setAdminNotes(
   ticket.adminNotes = adminNotes;
   ticket.updatedAt = new Date().toISOString();
 
-  await kv.kv_set(`support:ticket:${ticketId}`, ticket);
+  await kv.set(`support:ticket:${ticketId}`, ticket);
   return ticket;
 }
 
 // Get all support tickets (admin)
 export async function getAllSupportTickets(): Promise<SupportTicket[]> {
-  const ticketIds = (await kv.kv_get('support:all:tickets')) || [];
+  const ticketIds = (await kv.get('support:all:tickets')) || [];
   const tickets: SupportTicket[] = [];
 
   for (const ticketId of ticketIds) {
-    const ticket = await kv.kv_get(`support:ticket:${ticketId}`);
+    const ticket = await kv.get(`support:ticket:${ticketId}`);
     if (ticket) {
       tickets.push(ticket);
     }

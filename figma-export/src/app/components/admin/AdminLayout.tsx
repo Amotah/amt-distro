@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router';
 import { useAdmin } from '../../contexts/AdminContext';
+import { canAccessAdminPath } from '../../utils/admin-access';
 import {
   LayoutDashboard,
   Users,
@@ -41,7 +42,7 @@ import {
 } from 'lucide-react';
 
 export function AdminLayout() {
-  const { adminUser, logout, isSuperAdmin } = useAdmin();
+  const { adminUser, logout } = useAdmin();
   const navigate = useNavigate();
   const [isSidebarOpen, setIsSidebarOpen] = useState(() => (typeof window !== 'undefined' ? window.innerWidth >= 1024 : true));
 
@@ -52,7 +53,7 @@ export function AdminLayout() {
 
   const navGroups: Array<{
     label: string;
-    items: Array<{ path: string; label: string; icon: React.ElementType; exact?: boolean; permission?: string; superAdminOnly?: boolean }>;
+    items: Array<{ path: string; label: string; icon: React.ElementType; exact?: boolean }>;
   }> = [
     {
       label: 'Overview',
@@ -150,12 +151,7 @@ export function AdminLayout() {
 
   const visibleNavGroups = navGroups.map((group) => ({
     ...group,
-    items: group.items.filter((item) => {
-      if (item.superAdminOnly && !isSuperAdmin) return false;
-      if (!item.permission) return true;
-      if (isSuperAdmin) return true;
-      return adminUser?.permissions.includes(item.permission);
-    }),
+    items: group.items.filter((item) => canAccessAdminPath(adminUser, item.path)),
   })).filter((group) => group.items.length > 0);
 
   return (

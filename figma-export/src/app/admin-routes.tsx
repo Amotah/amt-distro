@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { NotFound } from './components/NotFound';
 import { RouteTransitionLoader } from './components/RouteTransitionLoader';
 const AdminLogin = lazy(() => import('./components/admin/AdminLogin').then((module) => ({ default: module.AdminLogin })));
@@ -51,6 +51,7 @@ const StaffPortal = lazy(() => import('./components/staff/StaffPortal').then((mo
 const StaffPortalManagement = lazy(() => import('./components/admin/StaffPortalManagement').then((module) => ({ default: module.StaffPortalManagement })));
 import { AdminProvider } from './contexts/AdminContext';
 import { useAdmin } from './contexts/AdminContext';
+import { canAccessAdminPath } from './utils/admin-access';
 
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
@@ -59,6 +60,7 @@ function withSuspense(element: React.ReactNode) {
 // Protected Route Component
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
   const { adminUser, isLoading } = useAdmin();
+  const location = useLocation();
 
   if (isLoading) {
     return <RouteTransitionLoader />;
@@ -72,6 +74,11 @@ function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
   if (mustChange) {
     return <Navigate to="/admin/change-password" replace />;
   }
+
+  if (!canAccessAdminPath(adminUser, location.pathname)) {
+    return <Navigate to="/admin" replace />;
+  }
+
   return <>{children}</>;
 }
 

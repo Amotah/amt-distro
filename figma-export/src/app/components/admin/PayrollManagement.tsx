@@ -69,8 +69,36 @@ type StubRecord = {
   };
   currency: string;
   grossPay: number;
+  earnings: {
+    basePay: number;
+    housingAllowance: number;
+    transportAllowance: number;
+    mealAllowance: number;
+    variablePay: number;
+  };
   deductions: PayrollRunLine['deductions'];
+  deductionSummary: {
+    paye: number;
+    pension: number;
+    nhf: number;
+    stateLevy: number;
+    localLevy: number;
+    healthInsurance: number;
+    voluntaryRetirement: number;
+    other: number;
+    unpaidLeaveAdjustment: number;
+    total: number;
+  };
   employerContribution: PayrollRunLine['employerContribution'];
+  employerContributionSummary: {
+    pension: number;
+    nhf: number;
+    nsitf: number;
+    stateLevy: number;
+    healthInsurance: number;
+    voluntaryRetirementMatch: number;
+    total: number;
+  };
   netPay: number;
   paymentMethod: PayrollPaymentMethod;
   paymentStatus: 'pending' | 'succeeded' | 'failed';
@@ -82,7 +110,11 @@ type StubRecord = {
     medicare: number;
     state: number;
     local: number;
+    healthInsurance: number;
     retirement401k: number;
+    other: number;
+    unpaidLeaveAdjustment: number;
+    deductionsTotal: number;
   };
 };
 
@@ -92,7 +124,7 @@ const TABS: Array<{ id: Tab; label: string; icon: typeof Users }> = [
   { id: 'timesheets', label: 'Timesheets', icon: Clock3 },
   { id: 'processing', label: 'Payroll Run', icon: Calculator },
   { id: 'distribution', label: 'Approval & Distribution', icon: Banknote },
-  { id: 'stubs', label: 'Pay Stubs', icon: FileText },
+  { id: 'stubs', label: 'Payslips', icon: FileText },
   { id: 'tax', label: 'Tax Compliance', icon: ShieldAlert },
   { id: 'reports', label: 'Reports & GL', icon: FileSpreadsheet },
 ];
@@ -121,6 +153,11 @@ function createEmptyEmployee(): Partial<PayrollEmployee> {
     benefits: {
       healthInsurance: 0,
       healthInsuranceEmployer: 0,
+      housingAllowance: 0,
+      transportAllowance: 0,
+      mealAllowance: 0,
+      pensionEmployeePercent: 8,
+      nhfEmployeePercent: 2.5,
       retirement401kEnabled: false,
       retirement401kPercent: 0,
       retirement401kEmployerMatchPercent: 0,
@@ -194,6 +231,13 @@ function normalizeConfig(config: PayrollOverviewResponse['config'] | null | unde
       futaRateEmployer: Number(config?.taxRates?.futaRateEmployer || 0),
       sutaRateByState: config?.taxRates?.sutaRateByState || {},
       stateIncomeRateByState: config?.taxRates?.stateIncomeRateByState || {},
+      payeRateDefault: Number((config?.taxRates?.payeRateDefault ?? config?.taxRates?.federalIncomeTaxRate) || 0),
+      pensionRateEmployee: Number((config?.taxRates?.pensionRateEmployee ?? config?.taxRates?.socialSecurityRateEmployee) || 0),
+      pensionRateEmployer: Number((config?.taxRates?.pensionRateEmployer ?? config?.taxRates?.socialSecurityRateEmployer) || 0),
+      nhfRateEmployee: Number((config?.taxRates?.nhfRateEmployee ?? config?.taxRates?.medicareRateEmployee) || 0),
+      nhfRateEmployer: Number((config?.taxRates?.nhfRateEmployer ?? config?.taxRates?.medicareRateEmployer) || 0),
+      nsitfRateEmployer: Number((config?.taxRates?.nsitfRateEmployer ?? config?.taxRates?.futaRateEmployer) || 0),
+      stateLevyRateByState: config?.taxRates?.stateLevyRateByState || config?.taxRates?.sutaRateByState || {},
     },
     deductions: {
       standardDeduction: Number(config?.deductions?.standardDeduction || 0),
@@ -331,6 +375,22 @@ function normalizeOverview(data: PayrollOverviewResponse): PayrollOverviewRespon
 }
 
 function normalizeTaxSummary(summary: PayrollTaxSummaryResponse | null | undefined): PayrollTaxSummaryResponse {
+  const quarterlyPayeRemittance = Array.isArray(summary?.quarterlyPayeRemittance)
+    ? summary.quarterlyPayeRemittance
+    : Array.isArray(summary?.quarterly941)
+      ? summary.quarterly941
+      : [];
+  const annualEmployeeTaxCards = Array.isArray(summary?.annualEmployeeTaxCards)
+    ? summary.annualEmployeeTaxCards
+    : Array.isArray(summary?.annual?.w2)
+      ? summary.annual.w2
+      : [];
+  const annualContractorPayments = Array.isArray(summary?.annualContractorPayments)
+    ? summary.annualContractorPayments
+    : Array.isArray(summary?.annual?.form1099)
+      ? summary.annual.form1099
+      : [];
+
   return {
     year: Number(summary?.year || new Date().getFullYear()),
     totals: {
@@ -342,13 +402,27 @@ function normalizeTaxSummary(summary: PayrollTaxSummaryResponse | null | undefin
       ficaEmployer: Number(summary?.totals?.ficaEmployer || 0),
       futa: Number(summary?.totals?.futa || 0),
       suta: Number(summary?.totals?.suta || 0),
+      payeWithheld: Number((summary?.totals?.payeWithheld ?? summary?.totals?.federalWithheld) || 0),
+      pensionEmployee: Number((summary?.totals?.pensionEmployee ?? summary?.totals?.ficaEmployee) || 0),
+      nhfEmployee: Number(summary?.totals?.nhfEmployee || 0),
+      statePayeWithheld: Number((summary?.totals?.statePayeWithheld ?? summary?.totals?.stateWithheld) || 0),
+      localLevyWithheld: Number((summary?.totals?.localLevyWithheld ?? summary?.totals?.localWithheld) || 0),
+      pensionEmployer: Number((summary?.totals?.pensionEmployer ?? summary?.totals?.ficaEmployer) || 0),
+      nhfEmployer: Number(summary?.totals?.nhfEmployer || 0),
+      nsitf: Number((summary?.totals?.nsitf ?? summary?.totals?.futa) || 0),
+      stateLevy: Number((summary?.totals?.stateLevy ?? summary?.totals?.suta) || 0),
+      employeeStatutory: Number((summary?.totals?.employeeStatutory ?? summary?.totals?.ficaEmployee) || 0),
+      employerStatutory: Number((summary?.totals?.employerStatutory ?? summary?.totals?.ficaEmployer) || 0),
     },
-    quarterly941: Array.isArray(summary?.quarterly941) ? summary.quarterly941 : [],
+    quarterly941: Array.isArray(summary?.quarterly941) ? summary.quarterly941 : quarterlyPayeRemittance,
+    quarterlyPayeRemittance,
     annual: {
-      w2: Array.isArray(summary?.annual?.w2) ? summary.annual.w2 : [],
+      w2: Array.isArray(summary?.annual?.w2) ? summary.annual.w2 : annualEmployeeTaxCards,
       w3TransmittalCount: Number(summary?.annual?.w3TransmittalCount || 0),
-      form1099: Array.isArray(summary?.annual?.form1099) ? summary.annual.form1099 : [],
+      form1099: Array.isArray(summary?.annual?.form1099) ? summary.annual.form1099 : annualContractorPayments,
     },
+    annualEmployeeTaxCards,
+    annualContractorPayments,
     alerts: Array.isArray(summary?.alerts) ? summary.alerts : [],
   };
 }
@@ -361,6 +435,11 @@ function normalizeReports(reportSet: PayrollReportsResponse | null | undefined):
     laborCostAnalysis: Array.isArray(reportSet?.laborCostAnalysis) ? reportSet.laborCostAnalysis : [],
     payrollTaxLiability: normalizeTaxSummary(reportSet?.payrollTaxLiability),
     contractor1099: Array.isArray(reportSet?.contractor1099) ? reportSet.contractor1099 : [],
+    contractorPayments: Array.isArray(reportSet?.contractorPayments)
+      ? reportSet.contractorPayments
+      : Array.isArray(reportSet?.contractor1099)
+        ? reportSet.contractor1099
+        : [],
     accountingEntries: Array.isArray(reportSet?.accountingEntries) ? reportSet.accountingEntries : [],
   };
 }
@@ -380,6 +459,13 @@ function normalizeStubRecord(record: Record<string, unknown>): StubRecord {
     },
     currency: String(stub.currency || 'NGN').toUpperCase(),
     grossPay: Number(stub.grossPay || 0),
+    earnings: {
+      basePay: Number(stub.earnings?.basePay || 0),
+      housingAllowance: Number(stub.earnings?.housingAllowance || 0),
+      transportAllowance: Number(stub.earnings?.transportAllowance || 0),
+      mealAllowance: Number(stub.earnings?.mealAllowance || 0),
+      variablePay: Number(stub.earnings?.variablePay || 0),
+    },
     deductions: {
       federalWithholding: Number(stub.deductions?.federalWithholding || 0),
       socialSecurity: Number(stub.deductions?.socialSecurity || 0),
@@ -391,6 +477,18 @@ function normalizeStubRecord(record: Record<string, unknown>): StubRecord {
       other: Number(stub.deductions?.other || 0),
       unpaidLeaveAdjustment: Number(stub.deductions?.unpaidLeaveAdjustment || 0),
     },
+    deductionSummary: {
+      paye: Number(stub.deductionSummary?.paye || 0),
+      pension: Number(stub.deductionSummary?.pension || 0),
+      nhf: Number(stub.deductionSummary?.nhf || 0),
+      stateLevy: Number(stub.deductionSummary?.stateLevy || 0),
+      localLevy: Number(stub.deductionSummary?.localLevy || 0),
+      healthInsurance: Number(stub.deductionSummary?.healthInsurance || 0),
+      voluntaryRetirement: Number(stub.deductionSummary?.voluntaryRetirement || 0),
+      other: Number(stub.deductionSummary?.other || 0),
+      unpaidLeaveAdjustment: Number(stub.deductionSummary?.unpaidLeaveAdjustment || 0),
+      total: Number(stub.deductionSummary?.total || 0),
+    },
     employerContribution: {
       socialSecurity: Number(stub.employerContribution?.socialSecurity || 0),
       medicare: Number(stub.employerContribution?.medicare || 0),
@@ -398,6 +496,15 @@ function normalizeStubRecord(record: Record<string, unknown>): StubRecord {
       suta: Number(stub.employerContribution?.suta || 0),
       healthInsurance: Number(stub.employerContribution?.healthInsurance || 0),
       retirement401kMatch: Number(stub.employerContribution?.retirement401kMatch || 0),
+    },
+    employerContributionSummary: {
+      pension: Number(stub.employerContributionSummary?.pension || 0),
+      nhf: Number(stub.employerContributionSummary?.nhf || 0),
+      nsitf: Number(stub.employerContributionSummary?.nsitf || 0),
+      stateLevy: Number(stub.employerContributionSummary?.stateLevy || 0),
+      healthInsurance: Number(stub.employerContributionSummary?.healthInsurance || 0),
+      voluntaryRetirementMatch: Number(stub.employerContributionSummary?.voluntaryRetirementMatch || 0),
+      total: Number(stub.employerContributionSummary?.total || 0),
     },
     netPay: Number(stub.netPay || 0),
     paymentMethod: stub.paymentMethod || 'direct_deposit',
@@ -410,7 +517,11 @@ function normalizeStubRecord(record: Record<string, unknown>): StubRecord {
       medicare: Number(stub.ytd?.medicare || 0),
       state: Number(stub.ytd?.state || 0),
       local: Number(stub.ytd?.local || 0),
+      healthInsurance: Number(stub.ytd?.healthInsurance || 0),
       retirement401k: Number(stub.ytd?.retirement401k || 0),
+      other: Number(stub.ytd?.other || 0),
+      unpaidLeaveAdjustment: Number(stub.ytd?.unpaidLeaveAdjustment || 0),
+      deductionsTotal: Number(stub.ytd?.deductionsTotal || 0),
     },
   };
 }
@@ -436,6 +547,12 @@ function currency(amount: number, code = 'NGN') {
 
 function formatLabel(value: string) {
   return value.replace(/_/g, ' ');
+}
+
+function paymentMethodLabel(value: PayrollPaymentMethod) {
+  if (value === 'direct_deposit') return 'Bank Transfer';
+  if (value === 'check') return 'Cheque';
+  return 'Paycard';
 }
 
 function payPeriodsPerYear(payFrequency: PayrollPayFrequency) {
@@ -590,6 +707,7 @@ export function PayrollManagement() {
     if (!overview) return [];
     const codes = new Set<string>([
       ...Object.keys(overview.config.taxRates.stateIncomeRateByState),
+      ...Object.keys(overview.config.taxRates.stateLevyRateByState || {}),
       ...Object.keys(overview.config.taxRates.sutaRateByState),
       ...Object.keys(overview.config.wageRules.minWageByState),
       ...employees.map((employee) => employee.taxInfo.state),
@@ -843,6 +961,9 @@ export function PayrollManagement() {
         taxRates: {
           ...overview.config.taxRates,
           [field]: { ...overview.config.taxRates[field], [code]: value },
+          ...(field === 'sutaRateByState'
+            ? { stateLevyRateByState: { ...(overview.config.taxRates.stateLevyRateByState || {}), [code]: value } }
+            : {}),
         },
       },
     });
@@ -1150,19 +1271,22 @@ export function PayrollManagement() {
       `Employee: ${stub.employeeName}`,
       `Period: ${stub.period.startDate} to ${stub.period.endDate}`,
       `Pay Date: ${stub.period.payDate}`,
+      `Base Salary: ${currency(stub.earnings.basePay, stub.currency)}`,
+      `Allowances: ${currency(stub.earnings.housingAllowance + stub.earnings.transportAllowance + stub.earnings.mealAllowance, stub.currency)}`,
       `Gross Pay: ${currency(stub.grossPay, stub.currency)}`,
       `Net Pay: ${currency(stub.netPay, stub.currency)}`,
-      `PAYE: ${currency(stub.deductions.federalWithholding, stub.currency)}`,
-      `Pension + NHF: ${currency(stub.deductions.socialSecurity + stub.deductions.medicare, stub.currency)}`,
-      `State + LGA: ${currency(stub.deductions.stateIncomeTax + stub.deductions.localIncomeTax, stub.currency)}`,
-      `401k YTD: ${currency(stub.ytd.retirement401k, stub.currency)}`,
+      `PAYE: ${currency(stub.deductionSummary.paye, stub.currency)}`,
+      `Pension: ${currency(stub.deductionSummary.pension, stub.currency)}`,
+      `NHF: ${currency(stub.deductionSummary.nhf, stub.currency)}`,
+      `State + LGA: ${currency(stub.deductionSummary.stateLevy + stub.deductionSummary.localLevy, stub.currency)}`,
+      `Total Deductions YTD: ${currency(stub.ytd.deductionsTotal, stub.currency)}`,
     ].join('\n');
-    downloadTextFile(`${stub.employeeName.replace(/\s+/g, '_')}_pay_stub.txt`, content);
+      downloadTextFile(`${stub.employeeName.replace(/\s+/g, '_')}_payslip.txt`, content);
   }
 
   function emailStub(stub: StubRecord) {
     if (typeof window === 'undefined') return;
-    const subject = encodeURIComponent(`Pay stub for ${stub.period.payDate}`);
+    const subject = encodeURIComponent(`Payslip for ${stub.period.payDate}`);
     const body = encodeURIComponent([
       `Hello ${stub.employeeName},`,
       '',
@@ -1199,7 +1323,7 @@ export function PayrollManagement() {
             Payroll Management
           </h1>
           <p className="mt-1 text-sm text-[#B3B3B3]">
-            Live payroll administration for employee records, wage compliance, pay runs, tax filings, pay stubs, and accounting entries.
+            Live payroll administration for employee records, wage compliance, pay runs, tax filings, payslips, and accounting entries.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -1244,7 +1368,7 @@ export function PayrollManagement() {
             { step: '1. Prepare', detail: selectedRun?.preparedAt ? `Prepared ${selectedRun.preparedAt.slice(0, 10)}` : 'Ready for payroll calculation' },
             { step: '2. Review', detail: selectedRun?.reviewedAt ? `Reviewed by ${selectedRun.reviewedBy || 'finance'}` : 'Finance manager review required' },
             { step: '3. Approve', detail: selectedRun?.approvedAt ? `Approved by ${selectedRun.approvedBy || 'signatory'}` : 'Owner approval required before payment' },
-            { step: '4. Distribute', detail: selectedRun?.paidAt ? `${failedPayments} failed payment(s) require follow-up` : 'ACH, check, and paycard supported' },
+            { step: '4. Distribute', detail: selectedRun?.paidAt ? `${failedPayments} failed payment(s) require follow-up` : 'Bank transfer, cheque, and paycard supported' },
           ].map((item) => (
             <div key={item.step} className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
               <p className="text-xs font-semibold text-white">{item.step}</p>
@@ -1343,7 +1467,7 @@ export function PayrollManagement() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Employee Profile" description="Personal info, employment details, compensation, tax setup, benefits, direct deposit, and emergency contact.">
+          <SectionCard title="Employee Profile" description="Personal info, employment details, compensation, tax setup, statutory deductions, bank payment details, and emergency contact.">
             <div className="grid gap-4 xl:grid-cols-2">
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1399,7 +1523,7 @@ export function PayrollManagement() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor="employee-tax-id">Tax ID (SSN/NINO)</Label>
+                    <Label htmlFor="employee-tax-id">Tax ID (TIN)</Label>
                     <Input id="employee-tax-id" value={employeeForm.personalInfo?.taxId || ''} onChange={(e) => setEmployeeForm({
                       ...employeeForm,
                       personalInfo: { ...(employeeForm.personalInfo || createEmptyEmployee().personalInfo), taxId: e.target.value },
@@ -1456,7 +1580,7 @@ export function PayrollManagement() {
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor="employee-base-salary">Base Salary</Label>
+                    <Label htmlFor="employee-base-salary">Annual Base Salary</Label>
                     <Input id="employee-base-salary" type="number" value={employeeForm.compensation?.baseSalary || 0} onChange={(e) => setEmployeeForm({
                       ...employeeForm,
                       salary: Number(e.target.value) || 0,
@@ -1508,7 +1632,7 @@ export function PayrollManagement() {
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
-                    <Label htmlFor="employee-filing-status">Tax Filing Status</Label>
+                    <Label htmlFor="employee-filing-status">Tax Category</Label>
                     <select
                       id="employee-filing-status"
                       title="Tax filing status"
@@ -1529,7 +1653,7 @@ export function PayrollManagement() {
                     </select>
                   </div>
                   <div>
-                    <Label htmlFor="employee-w4">W4 Withholding</Label>
+                    <Label htmlFor="employee-w4">Additional PAYE Adjustment</Label>
                     <Input id="employee-w4" type="number" value={employeeForm.taxInfo?.w4Withholding || 0} onChange={(e) => setEmployeeForm({
                       ...employeeForm,
                       taxInfo: { ...(employeeForm.taxInfo || createEmptyEmployee().taxInfo), w4Withholding: Number(e.target.value) || 0 },
@@ -1575,7 +1699,7 @@ export function PayrollManagement() {
 
             <div className="mt-4 grid gap-4 xl:grid-cols-3">
               <div className="space-y-3 rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
-                <h3 className="text-xs font-semibold text-white">Benefits and Deductions</h3>
+                <h3 className="text-xs font-semibold text-white">Statutory and Other Deductions</h3>
                 <div>
                   <Label htmlFor="employee-health-insurance">Health Insurance Deduction</Label>
                   <Input id="employee-health-insurance" type="number" value={employeeForm.benefits?.healthInsurance || 0} onChange={(e) => setEmployeeForm({
@@ -1599,17 +1723,17 @@ export function PayrollManagement() {
                       benefits: { ...(employeeForm.benefits || createEmptyEmployee().benefits), retirement401kEnabled: e.target.checked },
                     })}
                   />
-                  401k enrollment enabled
+                  Voluntary retirement savings enabled
                 </label>
                 <div>
-                  <Label htmlFor="employee-401k-percent">401k Contribution %</Label>
+                  <Label htmlFor="employee-401k-percent">Voluntary Retirement Contribution %</Label>
                   <Input id="employee-401k-percent" type="number" step="0.0001" value={employeeForm.benefits?.retirement401kPercent || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     benefits: { ...(employeeForm.benefits || createEmptyEmployee().benefits), retirement401kPercent: Number(e.target.value) || 0 },
                   })} />
                 </div>
                 <div>
-                  <Label htmlFor="employee-401k-match">Employer Match %</Label>
+                  <Label htmlFor="employee-401k-match">Employer Retirement Match %</Label>
                   <Input id="employee-401k-match" type="number" step="0.0001" value={employeeForm.benefits?.retirement401kEmployerMatchPercent || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     benefits: { ...(employeeForm.benefits || createEmptyEmployee().benefits), retirement401kEmployerMatchPercent: Number(e.target.value) || 0 },
@@ -1625,7 +1749,7 @@ export function PayrollManagement() {
               </div>
 
               <div className="space-y-3 rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
-                <h3 className="text-xs font-semibold text-white">Direct Deposit</h3>
+                <h3 className="text-xs font-semibold text-white">Bank Payment Details</h3>
                 <div>
                   <Label htmlFor="employee-bank-name">Bank Name</Label>
                   <Input id="employee-bank-name" value={employeeForm.directDeposit?.bankName || ''} onChange={(e) => setEmployeeForm({
@@ -1641,7 +1765,7 @@ export function PayrollManagement() {
                   })} />
                 </div>
                 <div>
-                  <Label htmlFor="employee-routing-mask">Routing Number (masked)</Label>
+                  <Label htmlFor="employee-routing-mask">Bank Code (masked)</Label>
                   <Input id="employee-routing-mask" value={employeeForm.directDeposit?.routingNumberMasked || ''} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     directDeposit: { ...(employeeForm.directDeposit || createEmptyEmployee().directDeposit), routingNumberMasked: e.target.value },
@@ -1650,30 +1774,30 @@ export function PayrollManagement() {
               </div>
 
               <div className="space-y-3 rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
-                <h3 className="text-xs font-semibold text-white">Leave Management</h3>
+                <h3 className="text-xs font-semibold text-white">Leave Balances</h3>
                 <div>
-                  <Label htmlFor="employee-pto-accrued">PTO Accrued Hours</Label>
+                  <Label htmlFor="employee-pto-accrued">Annual Leave Accrued Hours</Label>
                   <Input id="employee-pto-accrued" type="number" value={employeeForm.leave?.ptoAccruedHours || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     leave: { ...(employeeForm.leave || createEmptyEmployee().leave), ptoAccruedHours: Number(e.target.value) || 0 },
                   })} />
                 </div>
                 <div>
-                  <Label htmlFor="employee-pto-used">PTO Used Hours</Label>
+                  <Label htmlFor="employee-pto-used">Annual Leave Used Hours</Label>
                   <Input id="employee-pto-used" type="number" value={employeeForm.leave?.ptoUsedHours || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     leave: { ...(employeeForm.leave || createEmptyEmployee().leave), ptoUsedHours: Number(e.target.value) || 0 },
                   })} />
                 </div>
                 <div>
-                  <Label htmlFor="employee-sick-accrued">Sick Hours Accrued</Label>
+                  <Label htmlFor="employee-sick-accrued">Sick Leave Accrued Hours</Label>
                   <Input id="employee-sick-accrued" type="number" value={employeeForm.leave?.sickAccruedHours || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     leave: { ...(employeeForm.leave || createEmptyEmployee().leave), sickAccruedHours: Number(e.target.value) || 0 },
                   })} />
                 </div>
                 <div>
-                  <Label htmlFor="employee-sick-used">Sick Hours Used</Label>
+                  <Label htmlFor="employee-sick-used">Sick Leave Used Hours</Label>
                   <Input id="employee-sick-used" type="number" value={employeeForm.leave?.sickUsedHours || 0} onChange={(e) => setEmployeeForm({
                     ...employeeForm,
                     leave: { ...(employeeForm.leave || createEmptyEmployee().leave), sickUsedHours: Number(e.target.value) || 0 },
@@ -1773,63 +1897,87 @@ export function PayrollManagement() {
                 <h3 className="text-xs font-semibold text-white">Tax Configuration</h3>
                 <div>
                   <Label htmlFor="federal-tax-rate">PAYE Base Rate</Label>
-                  <Input id="federal-tax-rate" type="number" step="0.0001" value={overview.config.taxRates.federalIncomeTaxRate} onChange={(e) => setOverview({
+                  <Input id="federal-tax-rate" type="number" step="0.0001" value={overview.config.taxRates.payeRateDefault ?? overview.config.taxRates.federalIncomeTaxRate} onChange={(e) => setOverview({
                     ...overview,
                     config: {
                       ...overview.config,
-                      taxRates: { ...overview.config.taxRates, federalIncomeTaxRate: Number(e.target.value) || 0 },
+                      taxRates: {
+                        ...overview.config.taxRates,
+                        federalIncomeTaxRate: Number(e.target.value) || 0,
+                        payeRateDefault: Number(e.target.value) || 0,
+                      },
                     },
                   })} />
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <Label htmlFor="social-security-employee">Pension Employee</Label>
-                    <Input id="social-security-employee" type="number" step="0.0001" value={overview.config.taxRates.socialSecurityRateEmployee} onChange={(e) => setOverview({
+                    <Input id="social-security-employee" type="number" step="0.0001" value={overview.config.taxRates.pensionRateEmployee ?? overview.config.taxRates.socialSecurityRateEmployee} onChange={(e) => setOverview({
                       ...overview,
                       config: {
                         ...overview.config,
-                        taxRates: { ...overview.config.taxRates, socialSecurityRateEmployee: Number(e.target.value) || 0 },
+                        taxRates: {
+                          ...overview.config.taxRates,
+                          socialSecurityRateEmployee: Number(e.target.value) || 0,
+                          pensionRateEmployee: Number(e.target.value) || 0,
+                        },
                       },
                     })} />
                   </div>
                   <div>
                     <Label htmlFor="social-security-employer">Pension Employer</Label>
-                    <Input id="social-security-employer" type="number" step="0.0001" value={overview.config.taxRates.socialSecurityRateEmployer} onChange={(e) => setOverview({
+                    <Input id="social-security-employer" type="number" step="0.0001" value={overview.config.taxRates.pensionRateEmployer ?? overview.config.taxRates.socialSecurityRateEmployer} onChange={(e) => setOverview({
                       ...overview,
                       config: {
                         ...overview.config,
-                        taxRates: { ...overview.config.taxRates, socialSecurityRateEmployer: Number(e.target.value) || 0 },
+                        taxRates: {
+                          ...overview.config.taxRates,
+                          socialSecurityRateEmployer: Number(e.target.value) || 0,
+                          pensionRateEmployer: Number(e.target.value) || 0,
+                        },
                       },
                     })} />
                   </div>
                   <div>
                     <Label htmlFor="medicare-employee">NHF Employee</Label>
-                    <Input id="medicare-employee" type="number" step="0.0001" value={overview.config.taxRates.medicareRateEmployee} onChange={(e) => setOverview({
+                    <Input id="medicare-employee" type="number" step="0.0001" value={overview.config.taxRates.nhfRateEmployee ?? overview.config.taxRates.medicareRateEmployee} onChange={(e) => setOverview({
                       ...overview,
                       config: {
                         ...overview.config,
-                        taxRates: { ...overview.config.taxRates, medicareRateEmployee: Number(e.target.value) || 0 },
+                        taxRates: {
+                          ...overview.config.taxRates,
+                          medicareRateEmployee: Number(e.target.value) || 0,
+                          nhfRateEmployee: Number(e.target.value) || 0,
+                        },
                       },
                     })} />
                   </div>
                   <div>
                     <Label htmlFor="medicare-employer">NHF Employer</Label>
-                    <Input id="medicare-employer" type="number" step="0.0001" value={overview.config.taxRates.medicareRateEmployer} onChange={(e) => setOverview({
+                    <Input id="medicare-employer" type="number" step="0.0001" value={overview.config.taxRates.nhfRateEmployer ?? overview.config.taxRates.medicareRateEmployer} onChange={(e) => setOverview({
                       ...overview,
                       config: {
                         ...overview.config,
-                        taxRates: { ...overview.config.taxRates, medicareRateEmployer: Number(e.target.value) || 0 },
+                        taxRates: {
+                          ...overview.config.taxRates,
+                          medicareRateEmployer: Number(e.target.value) || 0,
+                          nhfRateEmployer: Number(e.target.value) || 0,
+                        },
                       },
                     })} />
                   </div>
                 </div>
                 <div>
                   <Label htmlFor="futa-rate">NSITF Employer Rate</Label>
-                  <Input id="futa-rate" type="number" step="0.0001" value={overview.config.taxRates.futaRateEmployer} onChange={(e) => setOverview({
+                  <Input id="futa-rate" type="number" step="0.0001" value={overview.config.taxRates.nsitfRateEmployer ?? overview.config.taxRates.futaRateEmployer} onChange={(e) => setOverview({
                     ...overview,
                     config: {
                       ...overview.config,
-                      taxRates: { ...overview.config.taxRates, futaRateEmployer: Number(e.target.value) || 0 },
+                      taxRates: {
+                        ...overview.config.taxRates,
+                        futaRateEmployer: Number(e.target.value) || 0,
+                        nsitfRateEmployer: Number(e.target.value) || 0,
+                      },
                     },
                   })} />
                 </div>
@@ -1884,7 +2032,7 @@ export function PayrollManagement() {
                         <Input className="h-8" type="number" step="0.0001" value={overview.config.taxRates.stateIncomeRateByState[code] || 0} onChange={(e) => updateJurisdiction(code, 'stateIncomeRateByState', Number(e.target.value) || 0)} />
                       </td>
                       <td>
-                        <Input className="h-8" type="number" step="0.0001" value={overview.config.taxRates.sutaRateByState[code] || 0} onChange={(e) => updateJurisdiction(code, 'sutaRateByState', Number(e.target.value) || 0)} />
+                        <Input className="h-8" type="number" step="0.0001" value={(overview.config.taxRates.stateLevyRateByState?.[code] ?? overview.config.taxRates.sutaRateByState[code]) || 0} onChange={(e) => updateJurisdiction(code, 'sutaRateByState', Number(e.target.value) || 0)} />
                       </td>
                       <td>
                         <Input className="h-8" type="number" value={overview.config.wageRules.minWageByState[code] || 0} onChange={(e) => updateJurisdiction(code, 'minWageByState', Number(e.target.value) || 0)} />
@@ -1929,7 +2077,7 @@ export function PayrollManagement() {
 
       {tab === 'timesheets' ? (
         <div className="space-y-4">
-          <SectionCard title="Timesheet Entry" description="Weekly, bi-weekly, or monthly time capture for hourly and part-time workers with manager approval workflow.">
+          <SectionCard title="Timesheet Entry" description="Weekly, bi-weekly, or monthly time capture for hourly and contract staff with manager approval workflow.">
             <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <div>
                 <Label htmlFor="timesheet-start-date">Period Start</Label>
@@ -2014,7 +2162,7 @@ export function PayrollManagement() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Salary Employees and Leave" description="Salary workers auto-populate from annual salary divided by pay periods, with leave balances available for adjustments.">
+          <SectionCard title="Salary Employees and Leave" description="Salary staff auto-populate from annual base salary divided by pay periods, with leave balances available for adjustments.">
             <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
               {salaryEmployees.map((employee) => {
                 const periodsPerYear = payPeriodsPerYear(employee.compensation.payFrequency);
@@ -2030,7 +2178,7 @@ export function PayrollManagement() {
                     </div>
                     <div className="mt-3 space-y-1">
                       <p>Gross per period: {currency(gross, employee.currency)}</p>
-                      <p>PTO balance: {(employee.leave.ptoAccruedHours - employee.leave.ptoUsedHours + employee.leave.carryoverHours).toFixed(2)} hrs</p>
+                      <p>Annual leave balance: {(employee.leave.ptoAccruedHours - employee.leave.ptoUsedHours + employee.leave.carryoverHours).toFixed(2)} hrs</p>
                       <p>Sick balance: {(employee.leave.sickAccruedHours - employee.leave.sickUsedHours).toFixed(2)} hrs</p>
                       <p>Unpaid leave is handled during payroll preparation for the current period.</p>
                     </div>
@@ -2081,8 +2229,8 @@ export function PayrollManagement() {
                   value={paymentMethod}
                   onChange={(e) => setPaymentMethod(e.target.value as PayrollPaymentMethod)}
                 >
-                  <option value="direct_deposit">Direct Deposit</option>
-                  <option value="check">Check</option>
+                  <option value="direct_deposit">Bank Transfer</option>
+                  <option value="check">Cheque</option>
                   <option value="paycard">Paycard</option>
                 </select>
               </div>
@@ -2230,11 +2378,11 @@ export function PayrollManagement() {
             </div>
           </SectionCard>
 
-          <SectionCard title="Payment Processing" description="Track direct deposits, checks, and paycards with confirmation and retry handling.">
+          <SectionCard title="Payment Processing" description="Track bank transfers, cheques, and paycards with confirmation and retry handling.">
             <div className="mb-4 grid gap-3 md:grid-cols-3 text-xs">
               <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
                 <p className="text-[#9CA3AF]">Selected method</p>
-                <p className="mt-1 font-semibold text-white">{formatLabel(selectedRun.paymentMethod)}</p>
+                <p className="mt-1 font-semibold text-white">{paymentMethodLabel(selectedRun.paymentMethod)}</p>
               </div>
               <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">
                 <p className="text-[#9CA3AF]">Succeeded</p>
@@ -2261,7 +2409,7 @@ export function PayrollManagement() {
                   {selectedRun.lines.map((line) => (
                     <tr key={line.employeeId} className="border-t border-[#222]">
                       <td className="py-2">{line.employeeName}</td>
-                      <td>{formatLabel(line.paymentMethod)}</td>
+                      <td>{paymentMethodLabel(line.paymentMethod)}</td>
                       <td><StatusBadge value={line.paymentStatus} /></td>
                       <td>
                         {line.paymentStatus === 'failed'
@@ -2278,15 +2426,15 @@ export function PayrollManagement() {
             {selectedRun.achBatchCsv ? (
               <div className="mt-4">
                 <div className="mb-2 flex items-center justify-between gap-2">
-                  <Label htmlFor="ach-batch">ACH Batch Upload File</Label>
-                  <Button variant="outline" onClick={() => downloadTextFile(`ach-batch-${selectedRun.id}.csv`, selectedRun.achBatchCsv || '', 'text/csv;charset=utf-8')}>
+                  <Label htmlFor="ach-batch">Bank Transfer Batch Upload File</Label>
+                  <Button variant="outline" onClick={() => downloadTextFile(`bank-transfer-batch-${selectedRun.id}.csv`, selectedRun.achBatchCsv || '', 'text/csv;charset=utf-8')}>
                     <Download className="mr-2 h-4 w-4" />
-                    Download ACH CSV
+                    Download Bank Batch CSV
                   </Button>
                 </div>
                 <textarea
                   id="ach-batch"
-                  title="ACH batch upload file"
+                  title="Bank transfer batch upload file"
                   readOnly
                   className="mt-1 h-32 w-full rounded-md border border-[#333] bg-[#0A0A0A] p-2 text-xs"
                   value={selectedRun.achBatchCsv}
@@ -2299,13 +2447,13 @@ export function PayrollManagement() {
 
       {tab === 'stubs' ? (
         <div className="space-y-4">
-          <SectionCard title="Pay Stub Generation" description="Generate period pay stubs with itemized deductions, YTD totals, portal access, email draft support, and printable copies.">
+          <SectionCard title="Payslip Generation" description="Generate Nigeria-format payslips with itemized earnings, statutory deductions, YTD totals, portal access, and printable copies.">
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <div className="min-w-[260px]">
                 <Label htmlFor="stub-run-selector">Payroll Run</Label>
                 <select
                   id="stub-run-selector"
-                  title="Payroll run for pay stub generation"
+                  title="Payroll run for payslip generation"
                   className="h-10 w-full rounded-md border border-[#333] bg-[#0A0A0A] px-2 text-sm"
                   value={selectedRun?.id || ''}
                   onChange={(e) => setSelectedRunId(e.target.value)}
@@ -2315,22 +2463,27 @@ export function PayrollManagement() {
                   ))}
                 </select>
               </div>
-              <Button onClick={() => void onLoadStubs()} className="bg-[#FF6B00] text-white hover:bg-[#E55A00]">Generate Stubs</Button>
+              <Button onClick={() => void onLoadStubs()} className="bg-[#FF6B00] text-white hover:bg-[#E55A00]">Generate Payslips</Button>
               <Button variant="outline" onClick={() => { if (typeof window !== 'undefined') window.print(); }}>Print View</Button>
-              <Button variant="outline" onClick={() => exportReport('pay-stubs.csv', stubs.map((stub) => ({
+              <Button variant="outline" onClick={() => exportReport('payslips.csv', stubs.map((stub) => ({
                 employeeName: stub.employeeName,
                 employeeEmail: stub.employeeEmail,
                 payDate: stub.period.payDate,
+                paye: stub.deductionSummary.paye,
+                pension: stub.deductionSummary.pension,
+                nhf: stub.deductionSummary.nhf,
+                allowances: stub.earnings.housingAllowance + stub.earnings.transportAllowance + stub.earnings.mealAllowance,
                 grossPay: stub.grossPay,
+                totalDeductions: stub.deductionSummary.total,
                 netPay: stub.netPay,
                 paymentMethod: stub.paymentMethod,
                 paymentStatus: stub.paymentStatus,
                 ytdGross: stub.ytd.gross,
                 ytdNet: stub.ytd.net,
-                ytd401k: stub.ytd.retirement401k,
+                ytdDeductions: stub.ytd.deductionsTotal,
               })))}>
                 <Download className="mr-2 h-4 w-4" />
-                Export Stubs
+                Export Payslips
               </Button>
             </div>
 
@@ -2346,33 +2499,29 @@ export function PayrollManagement() {
                   </div>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    <div className="rounded border border-[#333] p-2">Base Salary: {currency(stub.earnings.basePay, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Allowance Total: {currency(stub.earnings.housingAllowance + stub.earnings.transportAllowance + stub.earnings.mealAllowance, stub.currency)}</div>
                     <div className="rounded border border-[#333] p-2">Gross Pay: {currency(stub.grossPay, stub.currency)}</div>
                     <div className="rounded border border-[#333] p-2">Net Pay: {currency(stub.netPay, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">PAYE Withholding: {currency(stub.deductions.federalWithholding, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">Pension + NHF: {currency(stub.deductions.socialSecurity + stub.deductions.medicare, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">State + LGA: {currency(stub.deductions.stateIncomeTax + stub.deductions.localIncomeTax, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">Benefits + 401k: {currency(stub.deductions.healthInsurance + stub.deductions.retirement401k, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">PAYE: {currency(stub.deductionSummary.paye, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Employee Pension: {currency(stub.deductionSummary.pension, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">NHF: {currency(stub.deductionSummary.nhf, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">State + LGA: {currency(stub.deductionSummary.stateLevy + stub.deductionSummary.localLevy, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Health + Other: {currency(stub.deductionSummary.healthInsurance + stub.deductionSummary.other + stub.deductionSummary.unpaidLeaveAdjustment + stub.deductionSummary.voluntaryRetirement, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Total Deductions: {currency(stub.deductionSummary.total, stub.currency)}</div>
                   </div>
 
                   <div className="mt-3 grid gap-2 sm:grid-cols-2">
                     <div className="rounded border border-[#333] p-2">YTD Gross: {currency(stub.ytd.gross, stub.currency)}</div>
                     <div className="rounded border border-[#333] p-2">YTD Net: {currency(stub.ytd.net, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">YTD Taxes Withheld: {currency(stub.ytd.federal + stub.ytd.socialSecurity + stub.ytd.medicare + stub.ytd.state + stub.ytd.local, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">YTD 401k: {currency(stub.ytd.retirement401k, stub.currency)}</div>
-                    <div className="rounded border border-[#333] p-2">Employer Contribution: {currency(
-                      stub.employerContribution.socialSecurity
-                        + stub.employerContribution.medicare
-                        + stub.employerContribution.futa
-                        + stub.employerContribution.suta
-                        + stub.employerContribution.healthInsurance
-                        + stub.employerContribution.retirement401kMatch,
-                      stub.currency,
-                    )}</div>
-                    <div className="rounded border border-[#333] p-2">Payment Method: {formatLabel(stub.paymentMethod)}</div>
+                    <div className="rounded border border-[#333] p-2">YTD Total Deductions: {currency(stub.ytd.deductionsTotal, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">YTD Voluntary Retirement: {currency(stub.ytd.retirement401k, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Employer Statutory Cost: {currency(stub.employerContributionSummary.total, stub.currency)}</div>
+                    <div className="rounded border border-[#333] p-2">Payment Method: {paymentMethodLabel(stub.paymentMethod)}</div>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => printStub(stub)}>Download Stub</Button>
+                    <Button variant="outline" onClick={() => printStub(stub)}>Download Payslip</Button>
                     <Button variant="outline" onClick={() => emailStub(stub)} disabled={!stub.employeeEmail}>
                       <Mail className="mr-2 h-4 w-4" />
                       Email Employee
@@ -2382,14 +2531,14 @@ export function PayrollManagement() {
               ))}
             </div>
 
-            {stubs.length === 0 ? <p className="text-xs text-[#9CA3AF]">Generate stubs for a paid or approved payroll run to populate employee portal access.</p> : null}
+            {stubs.length === 0 ? <p className="text-xs text-[#9CA3AF]">Generate payslips for a paid or approved payroll run to populate employee portal access.</p> : null}
           </SectionCard>
         </div>
       ) : null}
 
       {tab === 'tax' ? (
         <div className="space-y-4">
-          <SectionCard title="Tax Compliance and Filing" description="PAYE, pension, state remittance, and annual filing visibility with tax year close controls.">
+          <SectionCard title="Tax Compliance and Filing" description="PAYE, pension, statutory remittance, and annual employee tax-card visibility with tax-year close controls.">
             <div className="mb-4 flex flex-wrap items-end gap-3">
               <div className="w-full max-w-[220px]">
                 <Label htmlFor="tax-year-selector">Tax Year</Label>
@@ -2408,13 +2557,13 @@ export function PayrollManagement() {
 
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-xs">
               <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Total Wages: {currency(taxSummary.totals.totalWages, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">PAYE Withheld: {currency(taxSummary.totals.federalWithheld, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Pension + NHF Employee: {currency(taxSummary.totals.ficaEmployee, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Pension + NHF Employer: {currency(taxSummary.totals.ficaEmployer, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">State PAYE Withheld: {currency(taxSummary.totals.stateWithheld, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">LGA Levy Withheld: {currency(taxSummary.totals.localWithheld, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">NSITF: {currency(taxSummary.totals.futa, overview.config.baseCurrency)}</div>
-              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">State Levy: {currency(taxSummary.totals.suta, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">PAYE Withheld: {currency(taxSummary.totals.payeWithheld ?? taxSummary.totals.federalWithheld, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Pension + NHF Employee: {currency(taxSummary.totals.employeeStatutory ?? taxSummary.totals.ficaEmployee, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Pension + NHF Employer: {currency(taxSummary.totals.employerStatutory ?? taxSummary.totals.ficaEmployer, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">State PAYE Withheld: {currency(taxSummary.totals.statePayeWithheld ?? taxSummary.totals.stateWithheld, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">LGA Levy Withheld: {currency(taxSummary.totals.localLevyWithheld ?? taxSummary.totals.localWithheld, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">NSITF: {currency(taxSummary.totals.nsitf ?? taxSummary.totals.futa, overview.config.baseCurrency)}</div>
+              <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">State Levy: {currency(taxSummary.totals.stateLevy ?? taxSummary.totals.suta, overview.config.baseCurrency)}</div>
             </div>
           </SectionCard>
 
@@ -2452,42 +2601,42 @@ export function PayrollManagement() {
           <div className="grid gap-4 xl:grid-cols-2">
             <SectionCard title="Quarterly PAYE Remittance" description="Quarterly PAYE liabilities for review and remittance planning.">
               <div className="space-y-2 text-xs">
-                {taxSummary.quarterly941.map((quarter) => (
+                {(taxSummary.quarterlyPayeRemittance ?? taxSummary.quarterly941).map((quarter) => (
                   <div key={quarter.quarter} className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3 flex items-center justify-between gap-2">
-                    <span>Q{quarter.quarter} • Form {quarter.form}</span>
-                    <span className="font-medium text-white">{currency(quarter.federalLiability, overview.config.baseCurrency)}</span>
+                    <span>Q{quarter.quarter} • {quarter.form}</span>
+                    <span className="font-medium text-white">{currency(Number(quarter.payeLiability ?? quarter.federalLiability ?? 0), overview.config.baseCurrency)}</span>
                   </div>
                 ))}
               </div>
             </SectionCard>
 
-            <SectionCard title="Annual Filings" description="Employee annual tax summary visibility for year-end close.">
+            <SectionCard title="Annual Payroll Close" description="Employee annual tax-card visibility and contractor payment summaries for year-end close.">
               <div className="grid gap-2 sm:grid-cols-3 text-xs">
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employee annual records: {taxSummary.annual.w2.length}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Consolidated filing batches: {taxSummary.annual.w3TransmittalCount}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Contractor annual records: {taxSummary.annual.form1099.length}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employee annual tax cards: {(taxSummary.annualEmployeeTaxCards ?? taxSummary.annual.w2).length}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Consolidated PAYE batches: {taxSummary.annual.w3TransmittalCount}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Contractor payment records: {(taxSummary.annualContractorPayments ?? taxSummary.annual.form1099).length}</div>
               </div>
 
               <div className="mt-3">
                 <p className="mb-2 text-xs font-semibold text-white">Employee Annual Tax Records</p>
                 <div className="space-y-2 text-xs">
-                  {taxSummary.annual.w2.map((item) => (
+                  {(taxSummary.annualEmployeeTaxCards ?? taxSummary.annual.w2).map((item) => (
                     <div key={item.employeeId} className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3 flex items-center justify-between gap-2">
                       <span>{item.employeeName}</span>
-                      <span>{currency(item.wages, overview.config.baseCurrency)}</span>
+                      <span>{currency(Number(item.annualTaxablePay ?? item.wages ?? 0), overview.config.baseCurrency)}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div className="mt-3">
-                <p className="mb-2 text-xs font-semibold text-white">Contractor Annual Tax Records</p>
+                <p className="mb-2 text-xs font-semibold text-white">Contractor Payment Records</p>
                 <div className="space-y-2 text-xs">
-                  {taxSummary.annual.form1099.length === 0 ? <p className="text-[#9CA3AF]">No contractor records in this tax year.</p> : null}
-                  {taxSummary.annual.form1099.map((item) => (
+                  {(taxSummary.annualContractorPayments ?? taxSummary.annual.form1099).length === 0 ? <p className="text-[#9CA3AF]">No contractor records in this tax year.</p> : null}
+                  {(taxSummary.annualContractorPayments ?? taxSummary.annual.form1099).map((item) => (
                     <div key={item.employeeId} className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3 flex items-center justify-between gap-2">
                       <span>{item.employeeName}</span>
-                      <span>{currency(item.nonEmployeeCompensation, overview.config.baseCurrency)}</span>
+                      <span>{currency(Number(item.contractAmount ?? item.nonEmployeeCompensation ?? 0), overview.config.baseCurrency)}</span>
                     </div>
                   ))}
                 </div>
@@ -2607,10 +2756,10 @@ export function PayrollManagement() {
             <SectionCard title="Payroll Tax Liability" description="Current year wages and payroll remittance liabilities from processed payroll.">
               <div className="space-y-2 text-xs">
                 <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Total wages: {currency(reports.payrollTaxLiability.totals.totalWages, overview.config.baseCurrency)}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">PAYE withheld: {currency(reports.payrollTaxLiability.totals.federalWithheld, overview.config.baseCurrency)}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employee Pension + NHF: {currency(reports.payrollTaxLiability.totals.ficaEmployee, overview.config.baseCurrency)}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employer Pension + NHF: {currency(reports.payrollTaxLiability.totals.ficaEmployer, overview.config.baseCurrency)}</div>
-                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">NSITF + State Levy: {currency(reports.payrollTaxLiability.totals.futa + reports.payrollTaxLiability.totals.suta, overview.config.baseCurrency)}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">PAYE withheld: {currency(reports.payrollTaxLiability.totals.payeWithheld ?? reports.payrollTaxLiability.totals.federalWithheld, overview.config.baseCurrency)}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employee Pension + NHF: {currency(reports.payrollTaxLiability.totals.employeeStatutory ?? reports.payrollTaxLiability.totals.ficaEmployee, overview.config.baseCurrency)}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">Employer Pension + NHF: {currency(reports.payrollTaxLiability.totals.employerStatutory ?? reports.payrollTaxLiability.totals.ficaEmployer, overview.config.baseCurrency)}</div>
+                <div className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3">NSITF + State Levy: {currency((reports.payrollTaxLiability.totals.nsitf ?? reports.payrollTaxLiability.totals.futa) + (reports.payrollTaxLiability.totals.stateLevy ?? reports.payrollTaxLiability.totals.suta), overview.config.baseCurrency)}</div>
               </div>
             </SectionCard>
           </div>
@@ -2618,13 +2767,13 @@ export function PayrollManagement() {
           <div className="grid gap-4 xl:grid-cols-2">
             <SectionCard title="Contractor Annual Report" description="Non-employee compensation for contractors and freelancers.">
               <div className="space-y-2 text-xs">
-                {reports.contractor1099.length === 0 ? <p className="text-[#9CA3AF]">No contractor liabilities yet.</p> : null}
-                {reports.contractor1099.map((row, index) => {
+                {(reports.contractorPayments ?? reports.contractor1099).length === 0 ? <p className="text-[#9CA3AF]">No contractor liabilities yet.</p> : null}
+                {(reports.contractorPayments ?? reports.contractor1099).map((row, index) => {
                   const item = row as Record<string, unknown>;
                   return (
                     <div key={index} className="rounded-lg border border-[#222] bg-[#0A0A0A] p-3 flex items-center justify-between gap-2">
                       <span>{String(item.employeeName || '-')}</span>
-                      <span>{currency(Number(item.nonEmployeeCompensation || 0), overview.config.baseCurrency)}</span>
+                      <span>{currency(Number(item.contractAmount ?? item.nonEmployeeCompensation ?? 0), overview.config.baseCurrency)}</span>
                     </div>
                   );
                 })}
@@ -2648,7 +2797,7 @@ export function PayrollManagement() {
                       <p>Cash / Bank: {currency(Number(credit.cashBank || 0), overview.config.baseCurrency)}</p>
                       <p>Tax Payable: {currency(Number(credit.taxPayable || 0), overview.config.baseCurrency)}</p>
                       <p>Benefits Payable: {currency(Number(credit.benefitsPayable || 0), overview.config.baseCurrency)}</p>
-                      <p>401k Payable: {currency(Number(credit.retirementPayable || 0), overview.config.baseCurrency)}</p>
+                      <p>Retirement Payable: {currency(Number(credit.retirementPayable || 0), overview.config.baseCurrency)}</p>
                     </div>
                   );
                 })}

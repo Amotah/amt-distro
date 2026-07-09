@@ -23,6 +23,23 @@ async function getAuthToken(storageKey: 'access_token' | 'admin_access_token'): 
   return token;
 }
 
+async function readApiError(response: Response): Promise<string> {
+  const raw = await response.text().catch(() => '');
+  if (!raw) {
+    return `API Error: ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { error?: string; message?: string };
+    if (parsed.error) return parsed.error;
+    if (parsed.message) return parsed.message;
+  } catch {
+    // Fall through to plain-text response handling.
+  }
+
+  return raw;
+}
+
 async function apiCall<T>(token: string, endpoint: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
@@ -34,8 +51,7 @@ async function apiCall<T>(token: string, endpoint: string, options: RequestInit 
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API Error: ${response.status}`);
+    throw new Error(await readApiError(response));
   }
 
   return response.json();
@@ -51,8 +67,7 @@ async function publicApiCall<T>(endpoint: string, options: RequestInit = {}): Pr
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API Error: ${response.status}`);
+    throw new Error(await readApiError(response));
   }
 
   return response.json();
@@ -61,7 +76,7 @@ async function publicApiCall<T>(endpoint: string, options: RequestInit = {}): Pr
 export type SupportStatus = 'open' | 'acknowledged' | 'in_progress' | 'waiting_on_user' | 'resolved' | 'closed';
 export type SupportPriority = 'low' | 'normal' | 'high' | 'urgent';
 export type SupportCategory = 'bug_report' | 'question' | 'feature_request' | 'billing_inquiry' | 'account_access' | 'technical_issue' | 'other';
-export type SupportSenderType = 'user' | 'admin' | 'system';
+export type SupportSenderType = 'user' | 'admin' | 'system' | 'guest';
 
 export interface SupportMessage {
   id: string;
@@ -125,23 +140,12 @@ export interface UpdateSupportTicketInput {
 }
 
 export async function createSupportTicket(input: CreateSupportTicketInput): Promise<SupportTicket> {
-  try {
-    // Try authenticated first
-    const token = await getAuthToken('access_token');
-    const result = await apiCall<{ ticket: SupportTicket }>(token, '/support/tickets', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    return result.ticket;
-  } catch (authError) {
-    // Fall back to public endpoint if not authenticated
-    console.log('Falling back to public support ticket creation');
-    const result = await publicApiCall<{ ticket: SupportTicket }>('/support/tickets', {
-      method: 'POST',
-      body: JSON.stringify(input),
-    });
-    return result.ticket;
-  }
+  const token = await getAuthToken('access_token');
+  const result = await apiCall<{ ticket: SupportTicket }>(token, '/support/tickets', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+  return result.ticket;
 }
 
 export async function createPublicSupportTicket(

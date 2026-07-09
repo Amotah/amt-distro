@@ -28,6 +28,23 @@ async function getAuthToken(): Promise<string> {
   return token;
 }
 
+async function readApiError(response: Response): Promise<string> {
+  const raw = await response.text().catch(() => '');
+  if (!raw) {
+    return `API Error: ${response.status}`;
+  }
+
+  try {
+    const parsed = JSON.parse(raw) as { error?: string; message?: string };
+    if (parsed.error) return parsed.error;
+    if (parsed.message) return parsed.message;
+  } catch {
+    // Fall through to plain-text response handling.
+  }
+
+  return raw;
+}
+
 // Generic API call helper
 async function apiCall<T>(
   endpoint: string,
@@ -45,8 +62,7 @@ async function apiCall<T>(
   });
 
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-    throw new Error(error.error || `API Error: ${response.status}`);
+    throw new Error(await readApiError(response));
   }
 
   return response.json();
@@ -57,7 +73,7 @@ async function apiCall<T>(
 export interface AdminUser {
   id: string;
   userId: string;
-  role: 'superadmin' | 'admin_finance' | 'admin_content' | 'admin_support' | 'admin_fraud' | 'admin_analytics';
+  role: 'superadmin' | 'system_admin' | 'admin_finance' | 'admin_content' | 'admin_support' | 'admin_fraud' | 'admin_analytics' | 'admin_operations' | 'hr_manager' | 'hr_specialist' | 'hr_coordinator' | 'payroll_manager' | 'recruitment_officer' | 'staff';
   permissions: string[];
   department?: string;
   createdBy: string;
@@ -82,6 +98,11 @@ export async function createAdminUser(data: {
 export async function getAllAdminUsers(): Promise<AdminUser[]> {
   const result = await apiCall<{ admins: AdminUser[] }>('/admin/users');
   return result.admins;
+}
+
+export async function getCurrentAdminUser(): Promise<AdminUser> {
+  const result = await apiCall<{ admin: AdminUser }>('/admin/me');
+  return result.admin;
 }
 
 export async function updateAdminRole(userId: string, role: AdminUser['role']): Promise<AdminUser> {
@@ -2811,6 +2832,11 @@ export interface PayrollEmployee {
   benefits: {
     healthInsurance: number;
     healthInsuranceEmployer: number;
+    housingAllowance: number;
+    transportAllowance: number;
+    mealAllowance: number;
+    pensionEmployeePercent: number;
+    nhfEmployeePercent: number;
     retirement401kEnabled: boolean;
     retirement401kPercent: number;
     retirement401kEmployerMatchPercent: number;
@@ -2926,6 +2952,13 @@ export interface PayrollConfig {
     futaRateEmployer: number;
     sutaRateByState: Record<string, number>;
     stateIncomeRateByState: Record<string, number>;
+    payeRateDefault?: number;
+    pensionRateEmployee?: number;
+    pensionRateEmployer?: number;
+    nhfRateEmployee?: number;
+    nhfRateEmployer?: number;
+    nsitfRateEmployer?: number;
+    stateLevyRateByState?: Record<string, number>;
   };
   deductions: {
     standardDeduction: number;
@@ -2970,13 +3003,27 @@ export interface PayrollTaxSummaryResponse {
     ficaEmployer: number;
     futa: number;
     suta: number;
+    payeWithheld?: number;
+    pensionEmployee?: number;
+    nhfEmployee?: number;
+    statePayeWithheld?: number;
+    localLevyWithheld?: number;
+    pensionEmployer?: number;
+    nhfEmployer?: number;
+    nsitf?: number;
+    stateLevy?: number;
+    employeeStatutory?: number;
+    employerStatutory?: number;
   };
   quarterly941: Array<Record<string, unknown>>;
+  quarterlyPayeRemittance?: Array<Record<string, unknown>>;
   annual: {
     w2: Array<Record<string, unknown>>;
     w3TransmittalCount: number;
     form1099: Array<Record<string, unknown>>;
   };
+  annualEmployeeTaxCards?: Array<Record<string, unknown>>;
+  annualContractorPayments?: Array<Record<string, unknown>>;
   alerts: string[];
 }
 
@@ -2987,6 +3034,7 @@ export interface PayrollReportsResponse {
   laborCostAnalysis: Array<Record<string, unknown>>;
   payrollTaxLiability: PayrollTaxSummaryResponse;
   contractor1099: Array<Record<string, unknown>>;
+  contractorPayments?: Array<Record<string, unknown>>;
   accountingEntries: Array<Record<string, unknown>>;
 }
 
@@ -3363,15 +3411,26 @@ export interface Payslip {
   id: string;
   staffId: string;
   staffName: string;
+  payGrade?: string;
+  department?: string;
+  role?: string;
   payPeriod: string;
   payDate: string;
   baseSalary: number;
   allowances: number;
+  grossSalary?: number;
   deductions: number;
   netSalary: number;
   currency: string;
   tax: number;
+  pension?: number;
+  nhf?: number;
+  stateLevy?: number;
+  localLevy?: number;
   insurancePremium?: number;
+  otherDeductions?: number;
+  employerPension?: number;
+  employerStatutory?: number;
   status: 'draft' | 'finalized' | 'paid';
   downloadUrl?: string;
   createdAt: string;
@@ -3473,14 +3532,17 @@ export async function downloadPayslip(payslipId: string): Promise<void> {
     headers: { 'Authorization': `Bearer ${token}` },
   });
   if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any).message || `HTTP ${res.status}`);
+    throw new Error(await readApiError(res));
   }
+
+  const disposition = res.headers.get('Content-Disposition') || '';
+  const fileNameMatch = disposition.match(/filename="?([^";]+)"?/i);
+  const fileName = fileNameMatch?.[1] || `payslip-${new Date().toISOString().slice(0, 10)}.txt`;
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `payslip-${new Date().toISOString().slice(0, 10)}.pdf`;
+  a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
 }

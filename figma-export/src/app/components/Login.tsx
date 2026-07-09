@@ -194,6 +194,7 @@ export function Login({ onLogin }: LoginProps) {
         if (normalizedRole !== 'admin') {
           sessionStorage.removeItem('admin_role');
           sessionStorage.removeItem('admin_permissions');
+          sessionStorage.removeItem('admin_department');
         }
 
         onLogin(normalizedRole, backendUserId, backendData.dashboardPath);
@@ -344,6 +345,7 @@ export function Login({ onLogin }: LoginProps) {
             if (admin) {
               sessionStorage.setItem('admin_role', admin.role);
               sessionStorage.setItem('admin_permissions', JSON.stringify(admin.permissions));
+              sessionStorage.setItem('admin_department', admin.department || '');
             }
           }
         } catch (adminError) {

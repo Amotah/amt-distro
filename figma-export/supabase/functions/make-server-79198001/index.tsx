@@ -2368,6 +2368,10 @@ async function verifyAdmin(c: any, next: any) {
     return c.json({ error: 'Admin access required' }, 403);
   }
 
+  if (!adminService.isAdminActive(admin)) {
+    return c.json({ error: 'Admin account is inactive' }, 403);
+  }
+
   c.set('adminUser', admin);
   await adminService.updateAdminActivity(userId);
   await next();
@@ -4883,7 +4887,7 @@ app.post('/make-server-79198001/admin/security/admins', verifyAuth, verifyAdmin,
     }
     if (!targetUser) return c.json({ error: `No user with email ${email}. They must register first.` }, 404);
 
-    const uid = targetUser.id || targetUser.userId;
+    const uid = targetUser.userId || targetUser.id;
     const admin = await adminService.createAdminUser(uid, role, actorId, department);
 
     if (customPermissions && Array.isArray(customPermissions)) {
@@ -5055,17 +5059,11 @@ app.get('/make-server-79198001/admin/security/alerts', verifyAuth, verifyAdmin, 
 
 // ── Permissions Matrix ───────────────────────────────────────────────────────
 
-const DEFAULT_ROLE_PERMS: Record<string, string[]> = {
-  superadmin: ['users.view','users.create','users.edit','users.delete','users.ban','users.verify','artists.view','artists.edit','artists.delete','artists.verify','releases.view','releases.edit','releases.delete','releases.approve','releases.takedown','distributions.view','distributions.retry','distributions.cancel','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','payments.refund','reports.view','reports.upload','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','admins.view','admins.create','admins.edit','admins.delete','system.settings','system.logs','system.analytics'],
-  admin_operations: ['users.view','users.create','artists.view','releases.view','releases.edit','releases.approve','distributions.view','fraud.view','fraud.flag_users','payments.view','payments.approve','system.analytics'],
-  admin_finance: ['users.view','artists.view','releases.view','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','reports.view','reports.upload','system.analytics'],
-  admin_content: ['users.view','users.create','artists.view','artists.edit','releases.view','releases.edit','releases.approve','releases.takedown','distributions.view','distributions.retry','system.analytics'],
-  admin_support: ['users.view','users.create','users.edit','artists.view','artists.edit','releases.view','payments.view','fraud.view'],
-  admin_fraud: ['users.view','users.ban','artists.view','releases.view','releases.takedown','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','system.analytics'],
-  admin_analytics: ['users.view','artists.view','releases.view','distributions.view','payments.view','fraud.view','system.analytics','system.logs'],
-};
+const DEFAULT_ROLE_PERMS: Record<string, string[]> = Object.fromEntries(
+  Object.entries(adminService.DEFAULT_ROLE_PERMISSIONS).map(([role, permissions]) => [role, [...permissions]])
+);
 
-const ALL_PERMISSIONS = ['users.view','users.create','users.edit','users.delete','users.ban','users.verify','artists.view','artists.edit','artists.delete','artists.verify','releases.view','releases.edit','releases.delete','releases.approve','releases.takedown','distributions.view','distributions.retry','distributions.cancel','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','payments.refund','reports.view','reports.upload','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','admins.view','admins.create','admins.edit','admins.delete','system.settings','system.logs','system.analytics'];
+const ALL_PERMISSIONS = [...adminService.ALL_AVAILABLE_PERMISSIONS];
 
 // GET /admin/security/permissions-matrix
 app.get('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, verifyAdmin, requirePermission('admins.view'), async (c) => {
@@ -5081,13 +5079,13 @@ app.get('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, v
   }
 });
 
-// PUT /admin/security/permissions-matrix — superadmin only
+// PUT /admin/security/permissions-matrix — elevated admins only
 app.put('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, verifyAdmin, requirePermission('system.settings'), async (c) => {
   try {
     const actorId = c.get('userId');
     const actorAdmin = await adminService.getAdminUser(actorId);
-    if (!actorAdmin || actorAdmin.role !== 'superadmin') {
-      return c.json({ error: 'Only superadmin can modify the permissions matrix' }, 403);
+    if (!adminService.hasElevatedAdminAccess(actorAdmin)) {
+      return c.json({ error: 'Only elevated admin accounts can modify the permissions matrix' }, 403);
     }
     const { matrix } = await c.req.json();
     if (!matrix || typeof matrix !== 'object') return c.json({ error: 'matrix is required' }, 400);
@@ -5589,6 +5587,42 @@ const HR_AUDIT_LOG_KEY = 'hr:audit:v1';
 const HR_DEPARTMENTS_KEY = 'hr:departments:v1';
 const HR_ROLES_KEY = 'hr:roles:v1';
 
+const HR_DEFAULT_DEPARTMENT_SEEDS: Array<Partial<HrDepartmentRecord>> = [
+  {
+    name: 'Content',
+    description: 'Content planning, production, and publishing operations',
+    expenseAccount: 'Content Payroll Expense',
+  },
+  {
+    name: 'Finance',
+    description: 'Finance, payroll, treasury, and accounting operations',
+    expenseAccount: 'Finance Payroll Expense',
+  },
+  {
+    name: 'Operations',
+    description: 'Operational delivery, service coordination, and execution',
+    expenseAccount: 'Operations Payroll Expense',
+  },
+  {
+    name: 'HR',
+    description: 'Human resources, recruitment, and people operations',
+    expenseAccount: 'HR Payroll Expense',
+  },
+  {
+    name: 'Admin',
+    description: 'Administration, governance, and executive support',
+    expenseAccount: 'Admin Payroll Expense',
+  },
+];
+
+const HR_DEFAULT_ROLE_SEEDS: Array<Partial<HrRoleRecord>> = [
+  { department: 'Content', name: 'Content', defaultPayGrade: 'PG-1A' },
+  { department: 'Finance', name: 'Finance', defaultPayGrade: 'PG-1A' },
+  { department: 'Operations', name: 'Operations', defaultPayGrade: 'PG-1A' },
+  { department: 'HR', name: 'HR', defaultPayGrade: 'PG-1A' },
+  { department: 'Admin', name: 'Admin', defaultPayGrade: 'PG-1A' },
+];
+
 function hrNowIso() {
   return new Date().toISOString();
 }
@@ -5609,6 +5643,74 @@ async function loadHrStaff(): Promise<HrStaffRecord[]> {
   return data as HrStaffRecord[];
 }
 
+function normalizeOptionalEmail(value: string | null | undefined) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findHrStaffRecord(staff: HrStaffRecord[], userId: string | undefined, userEmail: string | null | undefined) {
+  const normalizedEmail = normalizeOptionalEmail(userEmail);
+  return staff.find((member) => {
+    if (userId && member.id === userId) {
+      return true;
+    }
+    return Boolean(normalizedEmail) && normalizeOptionalEmail(member.email) === normalizedEmail;
+  }) || null;
+}
+
+function getAuthenticatedActorName(activeUser: any, authUser: any, staffMember: HrStaffRecord | null) {
+  if (staffMember?.fullName) return staffMember.fullName;
+
+  const fullName = [activeUser?.firstName, activeUser?.lastName].filter(Boolean).join(' ').trim();
+  if (fullName) return fullName;
+  if (activeUser?.artistName) return activeUser.artistName;
+  if (activeUser?.labelName) return activeUser.labelName;
+  if (typeof authUser?.user_metadata?.fullName === 'string' && authUser.user_metadata.fullName.trim()) {
+    return authUser.user_metadata.fullName.trim();
+  }
+  if (typeof authUser?.user_metadata?.name === 'string' && authUser.user_metadata.name.trim()) {
+    return authUser.user_metadata.name.trim();
+  }
+  return authUser?.email || 'User';
+}
+
+async function resolvePortalActor(c: any, required = true): Promise<Response | { activeUser: any; staffMember: HrStaffRecord | null } | null> {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return required ? c.json({ error: 'Unauthorized: No token provided' }, 401) : null;
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) {
+    return required ? c.json({ error: 'Unauthorized: Invalid token' }, 401) : null;
+  }
+
+  const activeUser = await userService.getUserByUserId(user.id).catch(() => null);
+  const staff = await loadHrStaff();
+  const staffMember = findHrStaffRecord(staff, user.id, user.email);
+
+  if (!activeUser && !staffMember) {
+    return required ? c.json({ error: 'Unauthorized: User account no longer exists' }, 401) : null;
+  }
+
+  c.set('userId', user.id);
+  c.set('userEmail', user.email);
+  c.set('userName', getAuthenticatedActorName(activeUser, user, staffMember));
+  c.set('userRole', staffMember ? 'staff' : (activeUser?.role || user.user_metadata?.role || 'user'));
+  if (activeUser) c.set('activeUser', activeUser);
+  if (staffMember) c.set('staffMember', staffMember);
+
+  return { activeUser, staffMember };
+}
+
+async function verifyStaffPortalAuth(c: any, next: any) {
+  const actor = await resolvePortalActor(c, true);
+  if (actor instanceof Response) {
+    return actor;
+  }
+
+  await next();
+}
+
 async function saveHrStaff(staff: HrStaffRecord[]) {
   await kv.set(HR_STAFF_KEY, staff);
 }
@@ -5621,8 +5723,23 @@ async function loadHrAuditLog(): Promise<HrAuditLogEntry[]> {
 
 async function loadHrDepartments(): Promise<HrDepartmentRecord[]> {
   const data = await kv.get(HR_DEPARTMENTS_KEY);
-  if (!Array.isArray(data)) return [];
-  return data as HrDepartmentRecord[];
+  const items = Array.isArray(data) ? data as HrDepartmentRecord[] : [];
+  const merged = items.slice();
+  let changed = false;
+
+  for (const seed of HR_DEFAULT_DEPARTMENT_SEEDS) {
+    const exists = merged.some((item) => item.name.toLowerCase() === String(seed.name || '').toLowerCase());
+    if (!exists) {
+      merged.push(normalizeHrDepartment(seed, 'system'));
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await saveHrDepartments(merged);
+  }
+
+  return merged;
 }
 
 async function saveHrDepartments(items: HrDepartmentRecord[]) {
@@ -5631,8 +5748,25 @@ async function saveHrDepartments(items: HrDepartmentRecord[]) {
 
 async function loadHrRoles(): Promise<HrRoleRecord[]> {
   const data = await kv.get(HR_ROLES_KEY);
-  if (!Array.isArray(data)) return [];
-  return data as HrRoleRecord[];
+  const items = Array.isArray(data) ? data as HrRoleRecord[] : [];
+  const merged = items.slice();
+  let changed = false;
+
+  for (const seed of HR_DEFAULT_ROLE_SEEDS) {
+    const department = String(seed.department || '').toLowerCase();
+    const name = String(seed.name || '').toLowerCase();
+    const exists = merged.some((item) => item.department.toLowerCase() === department && item.name.toLowerCase() === name);
+    if (!exists) {
+      merged.push(normalizeHrRole(seed, 'system'));
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    await saveHrRoles(merged);
+  }
+
+  return merged;
 }
 
 async function saveHrRoles(items: HrRoleRecord[]) {
@@ -5775,6 +5909,8 @@ function normalizeHrStaff(input: Partial<HrStaffRecord>, existingCount: number, 
 }
 
 async function syncHrStaffToPayroll(staff: HrStaffRecord) {
+  const annualBaseSalary = Math.max(0, Number(staff.baseSalary || 0)) * 12;
+
   const employees = await payrollService.upsertEmployee({
     id: staff.payrollEmployeeId,
     employeeId: staff.staffId,
@@ -5783,7 +5919,7 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
     position: staff.role,
     status: staff.status === 'terminated' ? 'inactive' : (staff.status as any),
     hireDate: staff.joinDate,
-    salary: staff.baseSalary,
+    salary: annualBaseSalary,
     currency: staff.currency,
     personalInfo: {
       email: staff.email,
@@ -5797,7 +5933,7 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
       employmentType: staff.employmentType,
     },
     compensation: {
-      baseSalary: staff.baseSalary,
+      baseSalary: annualBaseSalary,
       hourlyRate: 0,
       payFrequency: 'monthly',
     },
@@ -5810,8 +5946,13 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
     benefits: {
       healthInsurance: staff.benefits.healthInsurance,
       healthInsuranceEmployer: 0,
-      retirement401kEnabled: true,
-      retirement401kPercent: staff.benefits.pensionPercent,
+      housingAllowance: staff.benefits.housingAllowance,
+      transportAllowance: staff.benefits.transportAllowance,
+      mealAllowance: staff.benefits.mealAllowance,
+      pensionEmployeePercent: staff.benefits.pensionPercent,
+      nhfEmployeePercent: staff.benefits.nhfPercent,
+      retirement401kEnabled: false,
+      retirement401kPercent: 0,
       retirement401kEmployerMatchPercent: 0,
       otherDeductions: 0,
     },
@@ -6772,6 +6913,17 @@ app.get('/make-server-79198001/admin/payroll/overview', verifyAuth, verifyAdmin,
             accountNumberMasked: linked.bank.accountNumber,
             routingNumberMasked: linked.bank.bankCode,
           },
+          benefits: {
+            ...employee.benefits,
+            housingAllowance: linked.benefits.housingAllowance,
+            transportAllowance: linked.benefits.transportAllowance,
+            mealAllowance: linked.benefits.mealAllowance,
+            pensionEmployeePercent: linked.benefits.pensionPercent,
+            nhfEmployeePercent: linked.benefits.nhfPercent,
+            retirement401kEnabled: false,
+            retirement401kPercent: 0,
+            retirement401kEmployerMatchPercent: 0,
+          },
         };
       });
       overview.dashboard.employeeCount = overview.employees.length;
@@ -7276,34 +7428,15 @@ app.delete('/make-server-79198001/admin/users/:userId', verifyAuth, async (c) =>
 // POST /support/tickets - Create a new support ticket (public or authenticated)
 app.post('/make-server-79198001/support/tickets', async (c) => {
   try {
+    await resolvePortalActor(c, false);
     const body = await c.req.json();
     const { subject, category, message, priority } = body;
 
     // Get user info if authenticated
-    let userId: string | undefined;
-    let userName: string | undefined;
-    let userRole: string | undefined;
-    let userEmail: string = body.email;
-
-    try {
-      // Try to get authenticated user info
-      const token = c.req.header('Authorization')?.replace('Bearer ', '');
-      if (token && token !== 'fallback-admin-token') {
-        const supabase = createClient(
-          Deno.env.get('SUPABASE_URL') || '',
-          Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || ''
-        );
-        
-        // Get basic user info from context if available
-        userId = c.get('userId');
-        userEmail = c.get('userEmail') || userEmail;
-        userName = c.get('userName');
-        userRole = c.get('userRole');
-      }
-    } catch (err) {
-      // User not authenticated - that's okay for support tickets
-      console.log('Support ticket created by non-authenticated user');
-    }
+    const userId = c.get('userId');
+    const userName = c.get('userName');
+    const userRole = c.get('userRole');
+    const userEmail: string = c.get('userEmail') || body.email;
 
     if (!subject || !category || !message || !userEmail) {
       return c.json({ error: 'Missing required fields: subject, category, message, email' }, 400);
@@ -7335,26 +7468,22 @@ app.post('/make-server-79198001/support/tickets', async (c) => {
 });
 
 // GET /support/tickets - Get all tickets for authenticated user
-app.get('/make-server-79198001/support/tickets', async (c) => {
+app.get('/make-server-79198001/support/tickets', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
-    const userEmail = c.get('userEmail') || c.get('email');
+    const userEmail = c.get('userEmail');
 
-    let tickets = [];
+    const [userTickets, emailTickets] = await Promise.all([
+      supportService.getUserSupportTickets(userId),
+      userEmail ? supportService.getEmailSupportTickets(userEmail) : Promise.resolve([]),
+    ]);
 
-    // Get tickets by user ID if authenticated
-    if (userId) {
-      tickets = await supportService.getUserSupportTickets(userId);
-    }
-    // Otherwise get by email
-    else if (userEmail) {
-      tickets = await supportService.getEmailSupportTickets(userEmail);
-    }
-    // If neither, return empty list
-    else {
-      return c.json({ tickets: [], message: 'Not authenticated' }, 200);
+    const deduped = new Map<string, any>();
+    for (const ticket of [...userTickets, ...emailTickets]) {
+      deduped.set(ticket.id, ticket);
     }
 
+    const tickets = [...deduped.values()].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     return c.json({ tickets }, 200);
   } catch (error) {
     console.error('Error fetching support tickets:', error);
@@ -7363,13 +7492,20 @@ app.get('/make-server-79198001/support/tickets', async (c) => {
 });
 
 // GET /support/tickets/:ticketId - Get a specific ticket
-app.get('/make-server-79198001/support/tickets/:ticketId', async (c) => {
+app.get('/make-server-79198001/support/tickets/:ticketId', verifyStaffPortalAuth, async (c) => {
   try {
+    const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const ticketId = c.req.param('ticketId');
     const ticket = await supportService.getSupportTicket(ticketId);
 
     if (!ticket) {
       return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    const ownsTicket = ticket.userId === userId || normalizeOptionalEmail(ticket.userEmail) === normalizeOptionalEmail(userEmail);
+    if (!ownsTicket) {
+      return c.json({ error: 'Forbidden' }, 403);
     }
 
     return c.json({ ticket }, 200);
@@ -7380,8 +7516,10 @@ app.get('/make-server-79198001/support/tickets/:ticketId', async (c) => {
 });
 
 // POST /support/tickets/:ticketId/messages - Add a message to a ticket
-app.post('/make-server-79198001/support/tickets/:ticketId/messages', async (c) => {
+app.post('/make-server-79198001/support/tickets/:ticketId/messages', verifyStaffPortalAuth, async (c) => {
   try {
+    const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const ticketId = c.req.param('ticketId');
     const body = await c.req.json();
     const { message } = body;
@@ -7390,13 +7528,20 @@ app.post('/make-server-79198001/support/tickets/:ticketId/messages', async (c) =
       return c.json({ error: 'Message is required' }, 400);
     }
 
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail') || c.get('email');
+    const existingTicket = await supportService.getSupportTicket(ticketId);
+    if (!existingTicket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    const ownsTicket = existingTicket.userId === userId || normalizeOptionalEmail(existingTicket.userEmail) === normalizeOptionalEmail(userEmail);
+    if (!ownsTicket) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
 
     const ticket = await supportService.addMessageToTicket(
       ticketId,
-      userId ? 'user' : 'guest',
-      userId || 'guest',
+      'user',
+      userId,
       userEmail,
       c.get('userName'),
       message
@@ -7419,9 +7564,22 @@ app.post('/make-server-79198001/support/tickets/:ticketId/messages', async (c) =
 });
 
 // PATCH /support/tickets/:ticketId/close - Close a ticket
-app.patch('/make-server-79198001/support/tickets/:ticketId/close', async (c) => {
+app.patch('/make-server-79198001/support/tickets/:ticketId/close', verifyStaffPortalAuth, async (c) => {
   try {
+    const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const ticketId = c.req.param('ticketId');
+    const existingTicket = await supportService.getSupportTicket(ticketId);
+
+    if (!existingTicket) {
+      return c.json({ error: 'Ticket not found' }, 404);
+    }
+
+    const ownsTicket = existingTicket.userId === userId || normalizeOptionalEmail(existingTicket.userEmail) === normalizeOptionalEmail(userEmail);
+    if (!ownsTicket) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
     const ticket = await supportService.updateTicketStatus(ticketId, 'closed');
 
     if (!ticket) {
@@ -7653,9 +7811,10 @@ app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, v
 
 // ── Leave Management ────────────────────────────────────────────────────────
 
-app.post('/make-server-79198001/staff-portal/leave/apply', verifyAuth, async (c) => {
+app.post('/make-server-79198001/staff-portal/leave/apply', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const body = await c.req.json();
     const { leaveType, startDate, endDate, reason } = body;
     if (!leaveType || !startDate || !endDate || !reason) {
@@ -7670,7 +7829,7 @@ app.post('/make-server-79198001/staff-portal/leave/apply', verifyAuth, async (c)
     const numberOfDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
 
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
+  const member = findHrStaffRecord(staff, userId, userEmail);
     const staffName = member?.fullName || 'Staff Member';
 
     const id = crypto.randomUUID();
@@ -7696,7 +7855,7 @@ app.post('/make-server-79198001/staff-portal/leave/apply', verifyAuth, async (c)
   }
 });
 
-app.get('/make-server-79198001/staff-portal/leave/applications', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/leave/applications', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
     const statusFilter = c.req.query('status');
@@ -7709,11 +7868,12 @@ app.get('/make-server-79198001/staff-portal/leave/applications', verifyAuth, asy
   }
 });
 
-app.get('/make-server-79198001/staff-portal/leave/balance', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/leave/balance', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const member = findHrStaffRecord(staff, userId, userEmail);
 
     const leaveTypes: string[] = ['annual', 'sick', 'parental', 'study'];
     const typeToBalance: Record<string, number> = {
@@ -7753,7 +7913,7 @@ app.get('/make-server-79198001/staff-portal/leave/balance', verifyAuth, async (c
   }
 });
 
-app.post('/make-server-79198001/staff-portal/leave/applications/:id/cancel', verifyAuth, async (c) => {
+app.post('/make-server-79198001/staff-portal/leave/applications/:id/cancel', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
     const id = c.req.param('id');
@@ -7815,47 +7975,185 @@ app.post('/make-server-79198001/admin/staff-portal/leave/applications/:id/reject
 
 // ── Payslips ─────────────────────────────────────────────────────────────────
 
-app.get('/make-server-79198001/staff-portal/payslips', verifyAuth, async (c) => {
+function roundPayslipAmount(value: unknown) {
+  const numeric = Number(value || 0);
+  return Math.round((numeric + Number.EPSILON) * 100) / 100;
+}
+
+function formatPayslipAmount(amount: number, currency = 'NGN') {
+  try {
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: String(currency || 'NGN').toUpperCase(),
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(roundPayslipAmount(amount));
+  } catch {
+    return new Intl.NumberFormat('en-NG', {
+      style: 'currency',
+      currency: 'NGN',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(roundPayslipAmount(amount));
+  }
+}
+
+function buildPayslipId(runId: string, employeeId: string) {
+  return `${runId}~${employeeId}`;
+}
+
+function parsePayslipId(rawId: string) {
+  const tildeIndex = rawId.indexOf('~');
+  if (tildeIndex >= 0) {
+    return {
+      runId: rawId.slice(0, tildeIndex),
+      employeeId: rawId.slice(tildeIndex + 1),
+    };
+  }
+
+  const legacyEmployeeMarker = rawId.indexOf('-emp_');
+  if (legacyEmployeeMarker >= 0) {
+    return {
+      runId: rawId.slice(0, legacyEmployeeMarker),
+      employeeId: rawId.slice(legacyEmployeeMarker + 1),
+    };
+  }
+
+  return { runId: '', employeeId: '' };
+}
+
+function portalPayslipStatus(runStatus?: string) {
+  if (runStatus === 'paid' || runStatus === 'locked') return 'paid';
+  if (runStatus === 'draft') return 'draft';
+  return 'finalized';
+}
+
+function totalStubDeductions(stub: any) {
+  const deductionSummary = stub?.deductionSummary || {};
+  const deductions = stub?.deductions || {};
+  return roundPayslipAmount(
+    Number(deductionSummary.paye ?? deductions.federalWithholding ?? 0)
+      + Number(deductionSummary.pension ?? deductions.socialSecurity ?? 0)
+      + Number(deductionSummary.nhf ?? deductions.medicare ?? 0)
+      + Number(deductionSummary.stateLevy ?? deductions.stateIncomeTax ?? 0)
+      + Number(deductionSummary.localLevy ?? deductions.localIncomeTax ?? 0)
+      + Number(deductionSummary.healthInsurance ?? deductions.healthInsurance ?? 0)
+      + Number(deductionSummary.voluntaryRetirement ?? deductions.retirement401k ?? 0)
+      + Number(deductionSummary.other ?? deductions.other ?? 0)
+      + Number(deductionSummary.unpaidLeaveAdjustment ?? deductions.unpaidLeaveAdjustment ?? 0),
+  );
+}
+
+function totalStubEmployerContributions(stub: any) {
+  const employerContributionSummary = stub?.employerContributionSummary || {};
+  const employerContribution = stub?.employerContribution || {};
+  return roundPayslipAmount(
+    Number(employerContributionSummary.pension ?? employerContribution.socialSecurity ?? 0)
+      + Number(employerContributionSummary.nhf ?? employerContribution.medicare ?? 0)
+      + Number(employerContributionSummary.nsitf ?? employerContribution.futa ?? 0)
+      + Number(employerContributionSummary.stateLevy ?? employerContribution.suta ?? 0)
+      + Number(employerContributionSummary.healthInsurance ?? employerContribution.healthInsurance ?? 0)
+      + Number(employerContributionSummary.voluntaryRetirementMatch ?? employerContribution.retirement401kMatch ?? 0),
+  );
+}
+
+function staffOwnsPortalPayslip(stub: any, member: HrStaffRecord | null, userEmail: string | null | undefined) {
+  const normalizedUserEmail = normalizeOptionalEmail(userEmail);
+
+  if (member?.payrollEmployeeId && stub?.employeeId === member.payrollEmployeeId) {
+    return true;
+  }
+
+  if (member?.staffId && stub?.employeeId === member.staffId) {
+    return true;
+  }
+
+  if (member?.fullName && String(stub?.employeeName || '').trim().toLowerCase() === member.fullName.trim().toLowerCase()) {
+    return true;
+  }
+
+  return Boolean(normalizedUserEmail) && normalizeOptionalEmail(stub?.employeeEmail) === normalizedUserEmail;
+}
+
+function buildPortalPayslip(run: any, stub: any, member: HrStaffRecord | null, authUserId: string) {
+  const payslipId = buildPayslipId(String(run?.id || stub?.runId || ''), String(stub?.employeeId || ''));
+  const payDate = String(stub?.period?.payDate || run?.period?.payDate || '');
+  const deductionSummary = stub?.deductionSummary || {};
+  const deductions = stub?.deductions || {};
+  const employerContributionSummary = stub?.employerContributionSummary || {};
+  const employerContribution = stub?.employerContribution || {};
+  const baseSalary = roundPayslipAmount(stub?.earnings?.basePay ?? member?.baseSalary ?? 0);
+  const housingAllowance = roundPayslipAmount(stub?.earnings?.housingAllowance ?? member?.benefits?.housingAllowance ?? 0);
+  const transportAllowance = roundPayslipAmount(stub?.earnings?.transportAllowance ?? member?.benefits?.transportAllowance ?? 0);
+  const mealAllowance = roundPayslipAmount(stub?.earnings?.mealAllowance ?? member?.benefits?.mealAllowance ?? 0);
+  const allowances = roundPayslipAmount(housingAllowance + transportAllowance + mealAllowance);
+  const grossSalary = roundPayslipAmount(stub?.grossPay || 0);
+  const tax = roundPayslipAmount((deductionSummary.paye ?? deductions.federalWithholding) || 0);
+  const pension = roundPayslipAmount((deductionSummary.pension ?? deductions.socialSecurity) || 0);
+  const nhf = roundPayslipAmount((deductionSummary.nhf ?? deductions.medicare) || 0);
+  const stateLevy = roundPayslipAmount((deductionSummary.stateLevy ?? deductions.stateIncomeTax) || 0);
+  const localLevy = roundPayslipAmount((deductionSummary.localLevy ?? deductions.localIncomeTax) || 0);
+  const insurancePremium = roundPayslipAmount((deductionSummary.healthInsurance ?? deductions.healthInsurance ?? member?.benefits?.healthInsurance) || 0);
+  const otherDeductions = roundPayslipAmount(
+    Number(deductionSummary.voluntaryRetirement ?? deductions.retirement401k ?? 0)
+      + Number(deductionSummary.other ?? deductions.other ?? 0)
+      + Number(deductionSummary.unpaidLeaveAdjustment ?? deductions.unpaidLeaveAdjustment ?? 0),
+  );
+
+  return {
+    id: payslipId,
+    staffId: member?.staffId || member?.id || authUserId,
+    staffName: member?.fullName || stub?.employeeName || 'Staff Member',
+    payGrade: member?.payGrade || '',
+    department: member?.department || '',
+    role: member?.role || '',
+    payPeriod: `${String(stub?.period?.startDate || run?.period?.startDate || '')} – ${String(stub?.period?.endDate || run?.period?.endDate || '')}`,
+    payDate,
+    baseSalary,
+    allowances,
+    grossSalary,
+    deductions: roundPayslipAmount(stub?.deductionSummary?.total ?? totalStubDeductions(stub)),
+    netSalary: roundPayslipAmount(stub?.netPay || 0),
+    currency: String(stub?.currency || member?.currency || 'NGN').toUpperCase(),
+    tax,
+    pension,
+    nhf,
+    stateLevy,
+    localLevy,
+    insurancePremium,
+    otherDeductions,
+    employerPension: roundPayslipAmount((employerContributionSummary.pension ?? employerContribution.socialSecurity) || 0),
+    employerStatutory: roundPayslipAmount(employerContributionSummary.total ?? totalStubEmployerContributions(stub)),
+    status: portalPayslipStatus(run?.status),
+    downloadUrl: `/make-server-79198001/staff-portal/payslips/${payslipId}/download`,
+    createdAt: payDate || new Date().toISOString(),
+  };
+}
+
+app.get('/make-server-79198001/staff-portal/payslips', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const yearQ = c.req.query('year');
     const monthQ = c.req.query('month');
 
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
-    const staffName = member?.fullName || 'Staff Member';
-    const payrollEmpId = member?.payrollEmployeeId;
-
-    const state = await payrollService.getOverview();
-    const allRuns = (state as any).payrollSummary || [];
+    const member = findHrStaffRecord(staff, userId, userEmail);
+    const overview = await payrollService.getOverview();
+    const allRuns = Array.isArray((overview as any).runs) ? (overview as any).runs : [];
 
     const payslips: any[] = [];
     for (const run of allRuns) {
-      if (!run?.runId) continue;
+      if (!run?.id) continue;
       try {
-        const stubs = await payrollService.getPayStubs(run.runId);
+        const stubs = await payrollService.getPayStubs(run.id);
         for (const stub of stubs) {
-          const isMatch = payrollEmpId ? stub.employeeId === payrollEmpId : stub.employeeName?.toLowerCase() === staffName.toLowerCase() || stub.employeeEmail === (member?.email || '');
-          if (!isMatch) continue;
-          const payDate = stub.period?.payDate || run.payDate || '';
+          if (!staffOwnsPortalPayslip(stub, member, userEmail)) continue;
+
+          const payDate = stub.period?.payDate || run.period?.payDate || '';
           if (yearQ && !payDate.startsWith(yearQ)) continue;
           if (monthQ && !payDate.startsWith(`${yearQ || payDate.slice(0, 4)}-${String(monthQ).padStart(2, '0')}`)) continue;
-          payslips.push({
-            id: `${run.runId}-${stub.employeeId}`,
-            staffId: userId,
-            staffName,
-            payPeriod: `${stub.period?.startDate || ''} – ${stub.period?.endDate || ''}`,
-            payDate,
-            baseSalary: member?.baseSalary || stub.grossPay || 0,
-            allowances: (member?.benefits?.housingAllowance || 0) + (member?.benefits?.transportAllowance || 0) + (member?.benefits?.mealAllowance || 0),
-            deductions: stub.deductions?.total || 0,
-            netSalary: stub.netPay || 0,
-            currency: stub.currency || member?.currency || 'NGN',
-            tax: stub.deductions?.incomeTax || 0,
-            insurancePremium: member?.benefits?.healthInsurance || 0,
-            status: run.status === 'paid' ? 'paid' : run.status === 'draft' ? 'draft' : 'finalized',
-            createdAt: stub.period?.payDate || new Date().toISOString(),
-          });
+          payslips.push(buildPortalPayslip(run, stub, member, userId));
         }
       } catch (_) { /* skip runs with no stubs */ }
     }
@@ -7866,46 +8164,90 @@ app.get('/make-server-79198001/staff-portal/payslips', verifyAuth, async (c) => 
   }
 });
 
-app.get('/make-server-79198001/staff-portal/payslips/:id', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/payslips/:id', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
-    const [runId, empId] = c.req.param('id').split('-').reduce((acc: string[], part, i, arr) => {
-      if (i === 0) return [part, arr.slice(1).join('-')];
-      return acc;
-    }, []);
-    if (!runId) return c.json({ error: 'Invalid payslip id' }, 400);
+    const userEmail = c.get('userEmail');
+    const { runId, employeeId } = parsePayslipId(c.req.param('id'));
+    if (!runId || !employeeId) return c.json({ error: 'Invalid payslip id' }, 400);
+
+    const overview = await payrollService.getOverview();
+    const run = (Array.isArray((overview as any).runs) ? (overview as any).runs : []).find((item: any) => item.id === runId) || null;
     const stubs = await payrollService.getPayStubs(runId);
-    const stub = stubs.find((s: any) => s.employeeId === empId);
+    const stub = stubs.find((s: any) => s.employeeId === employeeId);
     if (!stub) return c.json({ error: 'Payslip not found' }, 404);
+
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
-    return c.json({ payslip: { ...stub, staffId: userId, staffName: member?.fullName || stub.employeeName } });
+    const member = findHrStaffRecord(staff, userId, userEmail);
+    if (!staffOwnsPortalPayslip(stub, member, userEmail)) {
+      return c.json({ error: 'Payslip not found' }, 404);
+    }
+
+    return c.json({
+      payslip: buildPortalPayslip(run || { id: runId, status: 'finalized', period: stub.period }, stub, member, userId),
+    });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }
 });
 
-app.get('/make-server-79198001/staff-portal/payslips/:id/download', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/payslips/:id/download', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const payslipId = c.req.param('id');
-    const [runId, ...empParts] = payslipId.split('-');
-    const empId = empParts.join('-');
+    const { runId, employeeId } = parsePayslipId(payslipId);
+    if (!runId || !employeeId) return c.json({ error: 'Invalid payslip id' }, 400);
+
+    const overview = await payrollService.getOverview();
+    const run = (Array.isArray((overview as any).runs) ? (overview as any).runs : []).find((item: any) => item.id === runId) || null;
     const stubs = await payrollService.getPayStubs(runId);
-    const stub = stubs.find((s: any) => s.employeeId === empId);
+    const stub = stubs.find((s: any) => s.employeeId === employeeId);
     if (!stub) return c.json({ error: 'Payslip not found' }, 404);
+
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
+    const member = findHrStaffRecord(staff, userId, userEmail);
+    if (!staffOwnsPortalPayslip(stub, member, userEmail)) {
+      return c.json({ error: 'Payslip not found' }, 404);
+    }
+
+    const payslip = buildPortalPayslip(run || { id: runId, status: 'finalized', period: stub.period }, stub, member, userId);
     const lines = [
       'PAYSLIP',
-      `Employee: ${member?.fullName || stub.employeeName}`,
-      `Period: ${stub.period?.startDate || ''} to ${stub.period?.endDate || ''}`,
-      `Pay Date: ${stub.period?.payDate || ''}`,
+      'Nigeria Payroll Format',
+      `Employee: ${payslip.staffName}`,
+      `Staff ID: ${member?.staffId || userId}`,
+      `Department: ${payslip.department || '-'}`,
+      `Role: ${payslip.role || '-'}`,
+      `Pay Grade: ${payslip.payGrade || '-'}`,
+      `Period: ${String(stub.period?.startDate || '')} to ${String(stub.period?.endDate || '')}`,
+      `Pay Date: ${payslip.payDate}`,
+      `Status: ${String(payslip.status || 'finalized').toUpperCase()}`,
       '',
-      `Gross Pay: ${stub.grossPay}`,
-      `Deductions: ${stub.deductions?.total || 0}`,
-      `Net Pay: ${stub.netPay}`,
-      `Currency: ${stub.currency || 'NGN'}`,
+      'EARNINGS',
+      `Base Salary: ${formatPayslipAmount(payslip.baseSalary, payslip.currency)}`,
+      `Housing Allowance: ${formatPayslipAmount(stub?.earnings?.housingAllowance || 0, payslip.currency)}`,
+      `Transport Allowance: ${formatPayslipAmount(stub?.earnings?.transportAllowance || 0, payslip.currency)}`,
+      `Meal Allowance: ${formatPayslipAmount(stub?.earnings?.mealAllowance || 0, payslip.currency)}`,
+      `Variable Pay: ${formatPayslipAmount(stub?.earnings?.variablePay || 0, payslip.currency)}`,
+      `Gross Pay: ${formatPayslipAmount(payslip.grossSalary, payslip.currency)}`,
+      '',
+      'DEDUCTIONS',
+      `PAYE: ${formatPayslipAmount(payslip.tax, payslip.currency)}`,
+      `Pension: ${formatPayslipAmount(payslip.pension, payslip.currency)}`,
+      `NHF: ${formatPayslipAmount(payslip.nhf, payslip.currency)}`,
+      `State Levy: ${formatPayslipAmount(payslip.stateLevy, payslip.currency)}`,
+      `LGA Levy: ${formatPayslipAmount(payslip.localLevy, payslip.currency)}`,
+      `Health Insurance: ${formatPayslipAmount(payslip.insurancePremium || 0, payslip.currency)}`,
+      `Other Deductions: ${formatPayslipAmount(payslip.otherDeductions || 0, payslip.currency)}`,
+      `Total Deductions: ${formatPayslipAmount(payslip.deductions, payslip.currency)}`,
+      '',
+      'NET PAY',
+      `Net Salary: ${formatPayslipAmount(payslip.netSalary, payslip.currency)}`,
+      '',
+      'EMPLOYER CONTRIBUTIONS',
+      `Employer Pension: ${formatPayslipAmount(payslip.employerPension || 0, payslip.currency)}`,
+      `Total Statutory Cost: ${formatPayslipAmount(payslip.employerStatutory || 0, payslip.currency)}`,
     ];
     return new Response(lines.join('\n'), {
       headers: {
@@ -7930,7 +8272,7 @@ async function loadEnrollments(): Promise<any[]> {
   return await kv.get(TRAINING_ENROLLMENTS_KEY) || [];
 }
 
-app.get('/make-server-79198001/staff-portal/trainings/available', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/trainings/available', verifyStaffPortalAuth, async (c) => {
   try {
     const trainings = await loadTrainings();
     const enrollments = await loadEnrollments();
@@ -7949,7 +8291,7 @@ app.get('/make-server-79198001/staff-portal/trainings/available', verifyAuth, as
   }
 });
 
-app.get('/make-server-79198001/staff-portal/trainings/my-trainings', verifyAuth, async (c) => {
+app.get('/make-server-79198001/staff-portal/trainings/my-trainings', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
     const enrollments = await loadEnrollments();
@@ -7966,9 +8308,10 @@ app.get('/make-server-79198001/staff-portal/trainings/my-trainings', verifyAuth,
   }
 });
 
-app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyAuth, async (c) => {
+app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
+    const userEmail = c.get('userEmail');
     const { trainingId } = await c.req.json();
     if (!trainingId) return c.json({ error: 'trainingId is required' }, 400);
 
@@ -7986,7 +8329,7 @@ app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyAuth, asyn
     }
 
     const staff = await loadHrStaff();
-    const member = staff.find((s) => s.id === userId || s.email === userId);
+  const member = findHrStaffRecord(staff, userId, userEmail);
     const enrollment = {
       id: crypto.randomUUID(),
       staffId: userId,
@@ -8004,7 +8347,7 @@ app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyAuth, asyn
   }
 });
 
-app.delete('/make-server-79198001/staff-portal/trainings/enroll/:id', verifyAuth, async (c) => {
+app.delete('/make-server-79198001/staff-portal/trainings/enroll/:id', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
     const id = c.req.param('id');
@@ -8019,7 +8362,7 @@ app.delete('/make-server-79198001/staff-portal/trainings/enroll/:id', verifyAuth
   }
 });
 
-app.post('/make-server-79198001/staff-portal/trainings/enroll/:id/feedback', verifyAuth, async (c) => {
+app.post('/make-server-79198001/staff-portal/trainings/enroll/:id/feedback', verifyStaffPortalAuth, async (c) => {
   try {
     const userId = c.get('userId');
     const id = c.req.param('id');
@@ -8078,15 +8421,6 @@ app.post('/make-server-79198001/admin/staff-portal/trainings', verifyAuth, verif
     trainings.unshift(training);
     await kv.set(TRAININGS_KEY, trainings);
     return c.json({ training }, 201);
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/admin/staff-portal/leave/applications', verifyAuth, verifyAdmin, async (c) => {
-  try {
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    return c.json({ applications: all });
   } catch (err) {
     return c.json({ error: (err as Error).message }, 500);
   }

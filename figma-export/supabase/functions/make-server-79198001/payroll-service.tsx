@@ -47,6 +47,11 @@ export interface PayrollEmployee {
   benefits: {
     healthInsurance: number;
     healthInsuranceEmployer: number;
+    housingAllowance: number;
+    transportAllowance: number;
+    mealAllowance: number;
+    pensionEmployeePercent: number;
+    nhfEmployeePercent: number;
     retirement401kEnabled: boolean;
     retirement401kPercent: number;
     retirement401kEmployerMatchPercent: number;
@@ -82,6 +87,13 @@ export interface PayrollConfig {
     futaRateEmployer: number;
     sutaRateByState: Record<string, number>;
     stateIncomeRateByState: Record<string, number>;
+    payeRateDefault?: number;
+    pensionRateEmployee?: number;
+    pensionRateEmployer?: number;
+    nhfRateEmployee?: number;
+    nhfRateEmployer?: number;
+    nsitfRateEmployer?: number;
+    stateLevyRateByState?: Record<string, number>;
   };
   deductions: {
     standardDeduction: number;
@@ -205,52 +217,110 @@ function getPayPeriodsPerYear(frequency: PayFrequency) {
   return 12;
 }
 
+function asRate(value: number | undefined | null, fallback = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  if (numeric <= 0) return 0;
+  return numeric > 1 ? numeric / 100 : numeric;
+}
+
+function nigeriaConsolidatedRelief(grossAnnual: number) {
+  return Math.max(200_000, grossAnnual * 0.01) + (grossAnnual * 0.2);
+}
+
+function nigeriaAnnualPaye(taxableAnnual: number) {
+  const bands = [
+    { width: 300_000, rate: 0.07 },
+    { width: 300_000, rate: 0.11 },
+    { width: 500_000, rate: 0.15 },
+    { width: 500_000, rate: 0.19 },
+    { width: 1_600_000, rate: 0.21 },
+  ];
+
+  let remaining = Math.max(0, taxableAnnual);
+  let tax = 0;
+  for (const band of bands) {
+    if (remaining <= 0) break;
+    const taxableAtBand = Math.min(remaining, band.width);
+    tax += taxableAtBand * band.rate;
+    remaining -= taxableAtBand;
+  }
+
+  if (remaining > 0) {
+    tax += remaining * 0.24;
+  }
+
+  return tax;
+}
+
+function isLegacyUsConfig(config?: Partial<PayrollConfig> | null) {
+  return Boolean(
+    config
+    && String(config.baseCurrency || '').toUpperCase() === 'USD'
+    && Number(config.deductions?.standardDeduction || 0) === 14_600
+    && Number(config.taxRates?.socialSecurityRateEmployee || 0) === 0.062
+  );
+}
+
 function defaultConfig(): PayrollConfig {
   return {
-    baseCurrency: 'USD',
-    supportedCurrencies: ['USD', 'NGN', 'GBP', 'EUR'],
+    baseCurrency: 'NGN',
+    supportedCurrencies: ['NGN', 'USD', 'GBP', 'EUR'],
     exchangeRates: {
-      USD: 1,
-      NGN: 1450,
-      GBP: 0.79,
-      EUR: 0.93,
+      NGN: 1,
+      USD: 0.00069,
+      GBP: 0.00054,
+      EUR: 0.00063,
     },
     payFrequencies: ['weekly', 'bi_weekly', 'monthly'],
     taxRates: {
-      federalIncomeTaxRate: 0.12,
-      socialSecurityRateEmployee: 0.062,
-      socialSecurityRateEmployer: 0.062,
-      medicareRateEmployee: 0.0145,
-      medicareRateEmployer: 0.0145,
-      futaRateEmployer: 0.006,
+      federalIncomeTaxRate: 0,
+      socialSecurityRateEmployee: 0.08,
+      socialSecurityRateEmployer: 0.1,
+      medicareRateEmployee: 0.025,
+      medicareRateEmployer: 0,
+      futaRateEmployer: 0.01,
       sutaRateByState: {
-        CA: 0.034,
-        NY: 0.041,
-        TX: 0.027,
-        FL: 0.029,
-        WA: 0.031,
+        AB: 0,
+        FC: 0,
+        LA: 0,
+        OG: 0,
+        RI: 0,
       },
       stateIncomeRateByState: {
-        CA: 0.07,
-        NY: 0.062,
-        TX: 0,
-        FL: 0,
-        WA: 0,
+        AB: 0,
+        FC: 0,
+        LA: 0,
+        OG: 0,
+        RI: 0,
+      },
+      payeRateDefault: 0,
+      pensionRateEmployee: 0.08,
+      pensionRateEmployer: 0.1,
+      nhfRateEmployee: 0.025,
+      nhfRateEmployer: 0,
+      nsitfRateEmployer: 0.01,
+      stateLevyRateByState: {
+        AB: 0,
+        FC: 0,
+        LA: 0,
+        OG: 0,
+        RI: 0,
       },
     },
     deductions: {
-      standardDeduction: 14600,
+      standardDeduction: 200_000,
       personalExemption: 0,
     },
     wageRules: {
       overtimeMultiplier: 1.5,
       overtimeAfterHours: 40,
       minWageByState: {
-        CA: 16,
-        NY: 15,
-        TX: 7.25,
-        FL: 12,
-        WA: 16.28,
+        AB: 400,
+        FC: 400,
+        LA: 400,
+        OG: 400,
+        RI: 400,
       },
     },
     taxYearClosed: [],
@@ -267,6 +337,138 @@ function defaultState(): PayrollState {
   };
 }
 
+function normalizeConfig(input?: Partial<PayrollConfig> | null): PayrollConfig {
+  const defaults = defaultConfig();
+
+  if (!input || isLegacyUsConfig(input)) {
+    return {
+      ...defaults,
+      taxYearClosed: Array.isArray(input?.taxYearClosed) ? input!.taxYearClosed : [],
+      updatedAt: input?.updatedAt || defaults.updatedAt,
+    };
+  }
+
+  return {
+    ...defaults,
+    ...input,
+    baseCurrency: String(input.baseCurrency || defaults.baseCurrency).toUpperCase(),
+    supportedCurrencies: Array.isArray(input.supportedCurrencies) && input.supportedCurrencies.length > 0
+      ? input.supportedCurrencies.map((currency) => String(currency || '').toUpperCase()).filter(Boolean)
+      : defaults.supportedCurrencies,
+    exchangeRates: {
+      ...defaults.exchangeRates,
+      ...(input.exchangeRates || {}),
+    },
+    payFrequencies: Array.isArray(input.payFrequencies) && input.payFrequencies.length > 0
+      ? input.payFrequencies
+      : defaults.payFrequencies,
+    taxRates: {
+      ...defaults.taxRates,
+      ...(input.taxRates || {}),
+      sutaRateByState: {
+        ...defaults.taxRates.sutaRateByState,
+        ...(input.taxRates?.sutaRateByState || {}),
+      },
+      stateIncomeRateByState: {
+        ...defaults.taxRates.stateIncomeRateByState,
+        ...(input.taxRates?.stateIncomeRateByState || {}),
+      },
+    },
+    deductions: {
+      ...defaults.deductions,
+      ...(input.deductions || {}),
+    },
+    wageRules: {
+      ...defaults.wageRules,
+      ...(input.wageRules || {}),
+      minWageByState: {
+        ...defaults.wageRules.minWageByState,
+        ...(input.wageRules?.minWageByState || {}),
+      },
+    },
+    taxYearClosed: Array.isArray(input.taxYearClosed) ? input.taxYearClosed : [],
+    updatedAt: input.updatedAt || defaults.updatedAt,
+  };
+}
+
+function normalizeEmployee(input: Partial<PayrollEmployee>, defaultCurrency: string): PayrollEmployee {
+  return {
+    id: String(input.id || generateId('emp')),
+    employeeId: String(input.employeeId || ''),
+    name: String(input.name || ''),
+    department: String(input.department || ''),
+    position: String(input.position || ''),
+    status: input.status || 'active',
+    hireDate: input.hireDate || nowIso().slice(0, 10),
+    salary: Number(input.salary || input.compensation?.baseSalary || 0),
+    lastPayDate: input.lastPayDate,
+    currency: String(input.currency || defaultCurrency).toUpperCase(),
+    personalInfo: {
+      email: String(input.personalInfo?.email || ''),
+      phone: String(input.personalInfo?.phone || ''),
+      address: String(input.personalInfo?.address || ''),
+      taxId: String(input.personalInfo?.taxId || ''),
+      emergencyContact: String(input.personalInfo?.emergencyContact || ''),
+    },
+    employmentDetails: {
+      manager: String(input.employmentDetails?.manager || ''),
+      employmentType: input.employmentDetails?.employmentType || 'full_time',
+    },
+    compensation: {
+      baseSalary: Number(input.compensation?.baseSalary || input.salary || 0),
+      hourlyRate: Number(input.compensation?.hourlyRate || 0),
+      payFrequency: input.compensation?.payFrequency || 'monthly',
+    },
+    taxInfo: {
+      filingStatus: input.taxInfo?.filingStatus || 'single',
+      w4Withholding: Number(input.taxInfo?.w4Withholding || 0),
+      state: String(input.taxInfo?.state || 'LA').toUpperCase(),
+      localTaxRate: Number(input.taxInfo?.localTaxRate || 0),
+      federalRateOverride: input.taxInfo?.federalRateOverride,
+      stateRateOverride: input.taxInfo?.stateRateOverride,
+    },
+    benefits: {
+      healthInsurance: Number(input.benefits?.healthInsurance || 0),
+      healthInsuranceEmployer: Number(input.benefits?.healthInsuranceEmployer || 0),
+      housingAllowance: Number(input.benefits?.housingAllowance || 0),
+      transportAllowance: Number(input.benefits?.transportAllowance || 0),
+      mealAllowance: Number(input.benefits?.mealAllowance || 0),
+      pensionEmployeePercent: Number(input.benefits?.pensionEmployeePercent || 0),
+      nhfEmployeePercent: Number(input.benefits?.nhfEmployeePercent || 0),
+      retirement401kEnabled: Boolean(input.benefits?.retirement401kEnabled),
+      retirement401kPercent: Number(input.benefits?.retirement401kPercent || 0),
+      retirement401kEmployerMatchPercent: Number(input.benefits?.retirement401kEmployerMatchPercent || 0),
+      otherDeductions: Number(input.benefits?.otherDeductions || 0),
+    },
+    directDeposit: {
+      bankName: String(input.directDeposit?.bankName || ''),
+      accountNumberMasked: String(input.directDeposit?.accountNumberMasked || ''),
+      routingNumberMasked: String(input.directDeposit?.routingNumberMasked || ''),
+    },
+    leave: {
+      ptoAccruedHours: Number(input.leave?.ptoAccruedHours || 0),
+      ptoUsedHours: Number(input.leave?.ptoUsedHours || 0),
+      sickAccruedHours: Number(input.leave?.sickAccruedHours || 0),
+      sickUsedHours: Number(input.leave?.sickUsedHours || 0),
+      carryoverHours: Number(input.leave?.carryoverHours || 0),
+    },
+    createdAt: input.createdAt || nowIso(),
+    updatedAt: input.updatedAt || nowIso(),
+  };
+}
+
+function normalizeState(value: Partial<PayrollState> | null | undefined): PayrollState {
+  const config = normalizeConfig(value?.config);
+  return {
+    employees: Array.isArray(value?.employees)
+      ? value!.employees.map((employee) => normalizeEmployee(employee, config.baseCurrency))
+      : [],
+    config,
+    timesheets: Array.isArray(value?.timesheets) ? value!.timesheets as TimesheetRecord[] : [],
+    runs: Array.isArray(value?.runs) ? value!.runs as PayrollRun[] : [],
+  };
+}
+
 async function loadState(): Promise<PayrollState> {
   const value = await kv.get(KEY);
   if (!value) {
@@ -274,7 +476,7 @@ async function loadState(): Promise<PayrollState> {
     await kv.set(KEY, state);
     return state;
   }
-  return value as PayrollState;
+  return normalizeState(value as PayrollState);
 }
 
 async function saveState(state: PayrollState) {
@@ -283,10 +485,12 @@ async function saveState(state: PayrollState) {
 
 function taxRateForEmployee(config: PayrollConfig, employee: PayrollEmployee) {
   const state = employee.taxInfo.state;
-  const federal = employee.taxInfo.federalRateOverride ?? config.taxRates.federalIncomeTaxRate;
-  const stateRate = employee.taxInfo.stateRateOverride ?? config.taxRates.stateIncomeRateByState[state] ?? 0;
-  const local = employee.taxInfo.localTaxRate || 0;
-  return { federal, stateRate, local };
+  const payeOverrideRate = typeof employee.taxInfo.federalRateOverride === 'number'
+    ? asRate(employee.taxInfo.federalRateOverride, 0)
+    : undefined;
+  const stateRate = asRate(employee.taxInfo.stateRateOverride ?? config.taxRates.stateIncomeRateByState[state] ?? 0, 0);
+  const local = asRate(employee.taxInfo.localTaxRate || 0, 0);
+  return { payeOverrideRate, stateRate, local };
 }
 
 function toBaseCurrency(config: PayrollConfig, amount: number, currency: string) {
@@ -313,22 +517,50 @@ function ensurePeriod(startDate: string, endDate: string, payDate: string, payFr
   };
 }
 
+function deductionTotal(deductions: PayrollLine['deductions']) {
+  return deductions.federalWithholding
+    + deductions.socialSecurity
+    + deductions.medicare
+    + deductions.stateIncomeTax
+    + deductions.localIncomeTax
+    + deductions.healthInsurance
+    + deductions.retirement401k
+    + deductions.other
+    + deductions.unpaidLeaveAdjustment;
+}
+
+function employerContributionTotal(employerContribution: PayrollLine['employerContribution']) {
+  return employerContribution.socialSecurity
+    + employerContribution.medicare
+    + employerContribution.futa
+    + employerContribution.suta
+    + employerContribution.healthInsurance
+    + employerContribution.retirement401kMatch;
+}
+
 function buildPayrollLine(state: PayrollState, employee: PayrollEmployee, period: PayrollPeriod): PayrollLine {
   const { config, timesheets } = state;
   const timesheet = getTimesheetForPeriod(timesheets, period.id, employee.id);
   const anomalyFlags: string[] = [];
 
+  const currency = employee.currency || config.baseCurrency;
+  const payPeriodsPerYear = getPayPeriodsPerYear(employee.compensation.payFrequency);
+  const annualBaseSalaryBase = toBaseCurrency(config, employee.compensation.baseSalary || 0, currency);
+  const baseSalaryPerPeriodBase = annualBaseSalaryBase / payPeriodsPerYear;
+  const housingAllowanceBase = toBaseCurrency(config, employee.benefits.housingAllowance || 0, currency);
+  const transportAllowanceBase = toBaseCurrency(config, employee.benefits.transportAllowance || 0, currency);
+  const mealAllowanceBase = toBaseCurrency(config, employee.benefits.mealAllowance || 0, currency);
+  const fixedAllowancesBase = housingAllowanceBase + transportAllowanceBase + mealAllowanceBase;
+
   let grossPayBase = 0;
   let unpaidLeaveAdjustmentBase = 0;
 
   if (employee.employmentDetails.employmentType === 'full_time') {
-    const periodsPerYear = getPayPeriodsPerYear(employee.compensation.payFrequency);
-    grossPayBase = employee.compensation.baseSalary / periodsPerYear;
+    grossPayBase = baseSalaryPerPeriodBase + fixedAllowancesBase;
 
     if (timesheet?.unpaidLeaveHours && timesheet.unpaidLeaveHours > 0) {
-      const hourlyBase = employee.compensation.baseSalary / 2080;
+      const hourlyBase = annualBaseSalaryBase / 2080;
       unpaidLeaveAdjustmentBase = timesheet.unpaidLeaveHours * hourlyBase;
-      grossPayBase -= unpaidLeaveAdjustmentBase;
     }
   } else {
     if (!timesheet) {
@@ -337,11 +569,11 @@ function buildPayrollLine(state: PayrollState, employee: PayrollEmployee, period
     const reg = timesheet?.regularHours ?? 0;
     const ot = timesheet?.overtimeHours ?? 0;
     const pto = timesheet?.paidTimeOffHours ?? 0;
-    const hourly = employee.compensation.hourlyRate;
-    grossPayBase = (reg + pto) * hourly + (ot * hourly * config.wageRules.overtimeMultiplier);
+    const hourlyBase = toBaseCurrency(config, employee.compensation.hourlyRate || 0, currency);
+    grossPayBase = ((reg + pto) * hourlyBase) + (ot * hourlyBase * config.wageRules.overtimeMultiplier) + fixedAllowancesBase;
 
     const minWage = config.wageRules.minWageByState[employee.taxInfo.state] ?? 0;
-    if (hourly < minWage) anomalyFlags.push('Hourly rate below state minimum wage');
+    if (hourlyBase < minWage) anomalyFlags.push('Hourly rate below state minimum wage');
     if (ot > 20) anomalyFlags.push('Unusually high overtime');
     if (timesheet && timesheet.status !== 'approved') anomalyFlags.push('Timesheet not approved');
   }
@@ -349,31 +581,42 @@ function buildPayrollLine(state: PayrollState, employee: PayrollEmployee, period
   if (grossPayBase < 0) grossPayBase = 0;
 
   const taxRates = taxRateForEmployee(config, employee);
-  const federal = grossPayBase * taxRates.federal;
-  const ssEmp = grossPayBase * config.taxRates.socialSecurityRateEmployee;
-  const medEmp = grossPayBase * config.taxRates.medicareRateEmployee;
+  const pensionableBase = baseSalaryPerPeriodBase + housingAllowanceBase + transportAllowanceBase;
+  const employeePensionRate = asRate(employee.benefits.pensionEmployeePercent, asRate(config.taxRates.socialSecurityRateEmployee, 0));
+  const employeeNhfRate = asRate(employee.benefits.nhfEmployeePercent, asRate(config.taxRates.medicareRateEmployee, 0));
+  const annualGrossBase = grossPayBase * payPeriodsPerYear;
+  const ssEmp = pensionableBase * employeePensionRate;
+  const medEmp = baseSalaryPerPeriodBase * employeeNhfRate;
+  const annualTaxableBase = Math.max(
+    0,
+    annualGrossBase
+      - nigeriaConsolidatedRelief(annualGrossBase)
+      - (ssEmp * payPeriodsPerYear)
+      - (medEmp * payPeriodsPerYear),
+  );
+  const federal = typeof taxRates.payeOverrideRate === 'number'
+    ? grossPayBase * taxRates.payeOverrideRate
+    : nigeriaAnnualPaye(annualTaxableBase) / payPeriodsPerYear;
   const stateTax = grossPayBase * taxRates.stateRate;
   const localTax = grossPayBase * taxRates.local;
-  const health = employee.benefits.healthInsurance;
+  const health = toBaseCurrency(config, employee.benefits.healthInsurance || 0, currency);
   const retirement = employee.benefits.retirement401kEnabled
-    ? grossPayBase * employee.benefits.retirement401kPercent
+    ? grossPayBase * asRate(employee.benefits.retirement401kPercent, 0)
     : 0;
-  const other = employee.benefits.otherDeductions;
+  const other = toBaseCurrency(config, employee.benefits.otherDeductions || 0, currency);
 
-  const totalDeductionsBase = federal + ssEmp + medEmp + stateTax + localTax + health + retirement + other;
+  const totalDeductionsBase = federal + ssEmp + medEmp + stateTax + localTax + health + retirement + other + unpaidLeaveAdjustmentBase;
   const netPayBase = Math.max(0, grossPayBase - totalDeductionsBase);
 
-  const ssEmployer = grossPayBase * config.taxRates.socialSecurityRateEmployer;
-  const medEmployer = grossPayBase * config.taxRates.medicareRateEmployer;
-  const futa = grossPayBase * config.taxRates.futaRateEmployer;
-  const sutaRate = config.taxRates.sutaRateByState[employee.taxInfo.state] ?? 0;
+  const ssEmployer = pensionableBase * asRate(config.taxRates.socialSecurityRateEmployer, 0);
+  const medEmployer = baseSalaryPerPeriodBase * asRate(config.taxRates.medicareRateEmployer, 0);
+  const futa = grossPayBase * asRate(config.taxRates.futaRateEmployer, 0);
+  const sutaRate = asRate(config.taxRates.sutaRateByState[employee.taxInfo.state] ?? 0, 0);
   const suta = grossPayBase * sutaRate;
-  const healthEmployer = employee.benefits.healthInsuranceEmployer;
+  const healthEmployer = toBaseCurrency(config, employee.benefits.healthInsuranceEmployer || 0, currency);
   const retirementMatch = employee.benefits.retirement401kEnabled
-    ? Math.min(employee.benefits.retirement401kPercent, employee.benefits.retirement401kEmployerMatchPercent) * grossPayBase
+    ? Math.min(asRate(employee.benefits.retirement401kPercent, 0), asRate(employee.benefits.retirement401kEmployerMatchPercent, 0)) * grossPayBase
     : 0;
-
-  const currency = employee.currency || config.baseCurrency;
 
   if (employee.status !== 'active') {
     anomalyFlags.push(`Employee status is ${employee.status}`);
@@ -431,22 +674,10 @@ function runTotals(config: PayrollConfig, lines: PayrollLine[]) {
 
   for (const line of lines) {
     grossBase += toBaseCurrency(config, line.grossPay, line.currency);
-    const lineDeductions = line.deductions.federalWithholding
-      + line.deductions.socialSecurity
-      + line.deductions.medicare
-      + line.deductions.stateIncomeTax
-      + line.deductions.localIncomeTax
-      + line.deductions.healthInsurance
-      + line.deductions.retirement401k
-      + line.deductions.other;
+    const lineDeductions = deductionTotal(line.deductions);
     deductionsBase += toBaseCurrency(config, lineDeductions, line.currency);
     netBase += toBaseCurrency(config, line.netPay, line.currency);
-    const lineEmployer = line.employerContribution.socialSecurity
-      + line.employerContribution.medicare
-      + line.employerContribution.futa
-      + line.employerContribution.suta
-      + line.employerContribution.healthInsurance
-      + line.employerContribution.retirement401kMatch;
+    const lineEmployer = employerContributionTotal(line.employerContribution);
     employerBase += toBaseCurrency(config, lineEmployer, line.currency);
   }
 
@@ -473,10 +704,10 @@ export async function getOverview() {
   const now = new Date();
   const quarterEnds = [2, 5, 8, 11];
   if (quarterEnds.includes(now.getMonth()) && now.getDate() > 20) {
-    complianceAlerts.push('Quarterly 941 filing window is open. Review liabilities before due date.');
+    complianceAlerts.push('Quarter-end payroll reconciliation is open. Review PAYE, pension, NHF, and levy remittances before filing.');
   }
   if (!state.config.taxYearClosed?.includes(now.getFullYear() - 1) && now.getMonth() === 0) {
-    complianceAlerts.push('Previous tax year is not closed. Lock payroll records after W-2/W-3 review.');
+    complianceAlerts.push('Previous payroll year is not closed. Finalize annual tax cards and statutory remittances before locking records.');
   }
 
   return {
@@ -504,11 +735,17 @@ export async function saveConfig(input: Partial<PayrollConfig>) {
       ...(input.taxRates || {}),
       sutaRateByState: {
         ...state.config.taxRates.sutaRateByState,
+        ...(input.taxRates?.stateLevyRateByState || {}),
         ...(input.taxRates?.sutaRateByState || {}),
       },
       stateIncomeRateByState: {
         ...state.config.taxRates.stateIncomeRateByState,
         ...(input.taxRates?.stateIncomeRateByState || {}),
+      },
+      stateLevyRateByState: {
+        ...(state.config.taxRates.stateLevyRateByState || state.config.taxRates.sutaRateByState),
+        ...(input.taxRates?.sutaRateByState || {}),
+        ...(input.taxRates?.stateLevyRateByState || {}),
       },
     },
     deductions: {
@@ -584,7 +821,7 @@ export async function upsertEmployee(input: Partial<PayrollEmployee> & { id?: st
       taxInfo: {
         filingStatus: input.taxInfo?.filingStatus || 'single',
         w4Withholding: input.taxInfo?.w4Withholding || 0,
-        state: input.taxInfo?.state || 'CA',
+        state: input.taxInfo?.state || 'LA',
         localTaxRate: input.taxInfo?.localTaxRate || 0,
         federalRateOverride: input.taxInfo?.federalRateOverride,
         stateRateOverride: input.taxInfo?.stateRateOverride,
@@ -592,6 +829,11 @@ export async function upsertEmployee(input: Partial<PayrollEmployee> & { id?: st
       benefits: {
         healthInsurance: input.benefits?.healthInsurance || 0,
         healthInsuranceEmployer: input.benefits?.healthInsuranceEmployer || 0,
+        housingAllowance: input.benefits?.housingAllowance || 0,
+        transportAllowance: input.benefits?.transportAllowance || 0,
+        mealAllowance: input.benefits?.mealAllowance || 0,
+        pensionEmployeePercent: input.benefits?.pensionEmployeePercent || 0,
+        nhfEmployeePercent: input.benefits?.nhfEmployeePercent || 0,
         retirement401kEnabled: input.benefits?.retirement401kEnabled || false,
         retirement401kPercent: input.benefits?.retirement401kPercent || 0,
         retirement401kEmployerMatchPercent: input.benefits?.retirement401kEmployerMatchPercent || 0,
@@ -753,9 +995,9 @@ export async function transitionRun(runId: string, action: 'review' | 'approve' 
         paymentMethod: 'direct_deposit',
         paymentStatus: hasDeposit ? 'succeeded' : 'failed',
         paymentReference: hasDeposit
-          ? `ACH-${run.id.slice(-6)}-${line.employeeId.slice(-4)}`
+          ? `NIP-${run.id.slice(-6)}-${line.employeeId.slice(-4)}`
           : undefined,
-        failureReason: hasDeposit ? undefined : (line.failureReason || 'No direct deposit details on file'),
+        failureReason: hasDeposit ? undefined : (line.failureReason || 'No bank transfer details on file'),
       };
     });
 
@@ -792,7 +1034,7 @@ export async function retryFailedPayments(runId: string) {
       return {
         ...line,
         paymentStatus: 'succeeded',
-        paymentReference: `ACHR-${run.id.slice(-6)}-${line.employeeId.slice(-4)}`,
+        paymentReference: `NIPR-${run.id.slice(-6)}-${line.employeeId.slice(-4)}`,
       };
     }
     return line;
@@ -812,7 +1054,10 @@ function ytdForEmployee(runs: PayrollRun[], employeeId: string, year: number, co
   let medBase = 0;
   let stateBase = 0;
   let localBase = 0;
+  let healthBase = 0;
   let retirementBase = 0;
+  let otherBase = 0;
+  let unpaidLeaveBase = 0;
 
   for (const run of runs) {
     if (!run.period.payDate.startsWith(`${year}-`)) continue;
@@ -825,7 +1070,10 @@ function ytdForEmployee(runs: PayrollRun[], employeeId: string, year: number, co
       medBase += toBaseCurrency(config, line.deductions.medicare, line.currency);
       stateBase += toBaseCurrency(config, line.deductions.stateIncomeTax, line.currency);
       localBase += toBaseCurrency(config, line.deductions.localIncomeTax, line.currency);
+      healthBase += toBaseCurrency(config, line.deductions.healthInsurance, line.currency);
       retirementBase += toBaseCurrency(config, line.deductions.retirement401k, line.currency);
+      otherBase += toBaseCurrency(config, line.deductions.other, line.currency);
+      unpaidLeaveBase += toBaseCurrency(config, line.deductions.unpaidLeaveAdjustment, line.currency);
     }
   }
 
@@ -837,7 +1085,11 @@ function ytdForEmployee(runs: PayrollRun[], employeeId: string, year: number, co
     medicare: round2(medBase),
     state: round2(stateBase),
     local: round2(localBase),
+    healthInsurance: round2(healthBase),
     retirement401k: round2(retirementBase),
+    other: round2(otherBase),
+    unpaidLeaveAdjustment: round2(unpaidLeaveBase),
+    deductionsTotal: round2(fedBase + ssBase + medBase + stateBase + localBase + healthBase + retirementBase + otherBase + unpaidLeaveBase),
   };
 }
 
@@ -850,6 +1102,17 @@ export async function getPayStubs(runId: string) {
 
   return run.lines.map((line) => {
     const employee = state.employees.find((item) => item.id === line.employeeId);
+    const payFrequency = employee?.compensation.payFrequency || run.period.payFrequency;
+    const periodsPerYear = getPayPeriodsPerYear(payFrequency);
+    const basePay = employee ? round2((employee.compensation.baseSalary || 0) / periodsPerYear) : round2(Math.max(0, line.grossPay));
+    const housingAllowance = round2(employee?.benefits.housingAllowance || 0);
+    const transportAllowance = round2(employee?.benefits.transportAllowance || 0);
+    const mealAllowance = round2(employee?.benefits.mealAllowance || 0);
+    const fixedAllowances = housingAllowance + transportAllowance + mealAllowance;
+    const totalDeductions = round2(deductionTotal(line.deductions));
+    const totalEmployerContribution = round2(employerContributionTotal(line.employerContribution));
+    const ytdBase = ytdForEmployee(state.runs, line.employeeId, year, state.config);
+
     return {
       runId: run.id,
       employeeId: line.employeeId,
@@ -858,12 +1121,53 @@ export async function getPayStubs(runId: string) {
       period: run.period,
       currency: line.currency,
       grossPay: line.grossPay,
+      earnings: {
+        basePay,
+        housingAllowance,
+        transportAllowance,
+        mealAllowance,
+        variablePay: round2(Math.max(0, line.grossPay - basePay - fixedAllowances)),
+      },
       deductions: line.deductions,
+      deductionSummary: {
+        paye: line.deductions.federalWithholding,
+        pension: line.deductions.socialSecurity,
+        nhf: line.deductions.medicare,
+        stateLevy: line.deductions.stateIncomeTax,
+        localLevy: line.deductions.localIncomeTax,
+        healthInsurance: line.deductions.healthInsurance,
+        voluntaryRetirement: line.deductions.retirement401k,
+        other: line.deductions.other,
+        unpaidLeaveAdjustment: line.deductions.unpaidLeaveAdjustment,
+        total: totalDeductions,
+      },
       employerContribution: line.employerContribution,
+      employerContributionSummary: {
+        pension: line.employerContribution.socialSecurity,
+        nhf: line.employerContribution.medicare,
+        nsitf: line.employerContribution.futa,
+        stateLevy: line.employerContribution.suta,
+        healthInsurance: line.employerContribution.healthInsurance,
+        voluntaryRetirementMatch: line.employerContribution.retirement401kMatch,
+        total: totalEmployerContribution,
+      },
       netPay: line.netPay,
       paymentMethod: line.paymentMethod,
       paymentStatus: line.paymentStatus,
-      ytd: ytdForEmployee(state.runs, line.employeeId, year, state.config),
+      ytd: {
+        gross: round2(fromBaseCurrency(state.config, ytdBase.gross, line.currency)),
+        net: round2(fromBaseCurrency(state.config, ytdBase.net, line.currency)),
+        federal: round2(fromBaseCurrency(state.config, ytdBase.federal, line.currency)),
+        socialSecurity: round2(fromBaseCurrency(state.config, ytdBase.socialSecurity, line.currency)),
+        medicare: round2(fromBaseCurrency(state.config, ytdBase.medicare, line.currency)),
+        state: round2(fromBaseCurrency(state.config, ytdBase.state, line.currency)),
+        local: round2(fromBaseCurrency(state.config, ytdBase.local, line.currency)),
+        healthInsurance: round2(fromBaseCurrency(state.config, ytdBase.healthInsurance, line.currency)),
+        retirement401k: round2(fromBaseCurrency(state.config, ytdBase.retirement401k, line.currency)),
+        other: round2(fromBaseCurrency(state.config, ytdBase.other, line.currency)),
+        unpaidLeaveAdjustment: round2(fromBaseCurrency(state.config, ytdBase.unpaidLeaveAdjustment, line.currency)),
+        deductionsTotal: round2(fromBaseCurrency(state.config, ytdBase.deductionsTotal, line.currency)),
+      },
     };
   });
 }
@@ -878,25 +1182,30 @@ export async function taxSummary(year: number) {
   let ficaEmployer = 0;
   let futa = 0;
   let suta = 0;
+  const quarterLiabilities = [0, 0, 0, 0];
 
   for (const run of state.runs) {
     if (!run.period.payDate.startsWith(`${year}-`)) continue;
+    const monthNumber = Number(run.period.payDate.slice(5, 7)) || 1;
+    const quarterIndex = Math.max(0, Math.min(3, Math.floor((monthNumber - 1) / 3)));
     for (const line of run.lines) {
       totalWages += toBaseCurrency(state.config, line.grossPay, line.currency);
-      federal += toBaseCurrency(state.config, line.deductions.federalWithholding, line.currency);
+      const paye = toBaseCurrency(state.config, line.deductions.federalWithholding, line.currency);
+      federal += paye;
       ficaEmp += toBaseCurrency(state.config, line.deductions.socialSecurity + line.deductions.medicare, line.currency);
       stateTax += toBaseCurrency(state.config, line.deductions.stateIncomeTax, line.currency);
       localTax += toBaseCurrency(state.config, line.deductions.localIncomeTax, line.currency);
       ficaEmployer += toBaseCurrency(state.config, line.employerContribution.socialSecurity + line.employerContribution.medicare, line.currency);
       futa += toBaseCurrency(state.config, line.employerContribution.futa, line.currency);
       suta += toBaseCurrency(state.config, line.employerContribution.suta, line.currency);
+      quarterLiabilities[quarterIndex] += paye;
     }
   }
 
   const quarterly941 = [1, 2, 3, 4].map((q) => ({
     quarter: q,
-    form: '941',
-    federalLiability: round2((federal + ficaEmp + ficaEmployer) / 4),
+    form: 'PAYE',
+    federalLiability: round2(quarterLiabilities[q - 1] || 0),
   }));
 
   const annualW2 = state.employees
@@ -905,6 +1214,7 @@ export async function taxSummary(year: number) {
       employeeId: employee.id,
       employeeName: employee.name,
       wages: ytdForEmployee(state.runs, employee.id, year, state.config).gross,
+      payeWithheld: ytdForEmployee(state.runs, employee.id, year, state.config).federal,
     }));
 
   const annual1099 = state.employees
@@ -926,18 +1236,54 @@ export async function taxSummary(year: number) {
       ficaEmployer: round2(ficaEmployer),
       futa: round2(futa),
       suta: round2(suta),
+      payeWithheld: round2(federal),
+      pensionEmployee: round2(ficaEmp - (state.config.taxRates.medicareRateEmployee ? 0 : 0)),
+      nhfEmployee: round2(medBaseFromEmployeeRuns(state.runs, year, state.config)),
+      statePayeWithheld: round2(stateTax),
+      localLevyWithheld: round2(localTax),
+      pensionEmployer: round2(ficaEmployer - (state.config.taxRates.medicareRateEmployer ? 0 : 0)),
+      nhfEmployer: round2(medBaseFromEmployerRuns(state.runs, year, state.config)),
+      nsitf: round2(futa),
+      stateLevy: round2(suta),
+      employeeStatutory: round2(ficaEmp),
+      employerStatutory: round2(ficaEmployer + futa + suta),
     },
     quarterly941,
+    quarterlyPayeRemittance: quarterly941,
     annual: {
       w2: annualW2,
       w3TransmittalCount: annualW2.length,
       form1099: annual1099,
     },
+    annualEmployeeTaxCards: annualW2,
+    annualContractorPayments: annual1099,
     alerts: [
-      `Q${new Date().getMonth() < 3 ? 1 : new Date().getMonth() < 6 ? 2 : new Date().getMonth() < 9 ? 3 : 4} filings should be reviewed before remittance.`,
-      state.config.taxYearClosed?.includes(year) ? 'Tax year closed and locked.' : 'Tax year open. Finalize and lock after filing.',
+      `Q${new Date().getMonth() < 3 ? 1 : new Date().getMonth() < 6 ? 2 : new Date().getMonth() < 9 ? 3 : 4} PAYE and statutory remittances should be reviewed before submission.`,
+      state.config.taxYearClosed?.includes(year) ? 'Payroll year closed after annual tax-card review.' : 'Payroll year open. Finalize annual employee tax cards and lock after remittance review.',
     ],
   };
+}
+
+function medBaseFromEmployeeRuns(runs: PayrollRun[], year: number, config: PayrollConfig) {
+  let total = 0;
+  for (const run of runs) {
+    if (!run.period.payDate.startsWith(`${year}-`)) continue;
+    for (const line of run.lines) {
+      total += toBaseCurrency(config, line.deductions.medicare, line.currency);
+    }
+  }
+  return total;
+}
+
+function medBaseFromEmployerRuns(runs: PayrollRun[], year: number, config: PayrollConfig) {
+  let total = 0;
+  for (const run of runs) {
+    if (!run.period.payDate.startsWith(`${year}-`)) continue;
+    for (const line of run.lines) {
+      total += toBaseCurrency(config, line.employerContribution.medicare, line.currency);
+    }
+  }
+  return total;
 }
 
 export async function closeTaxYear(year: number) {
@@ -992,6 +1338,13 @@ export async function payrollReports() {
     local: item.deductions.localIncomeTax,
     benefits: item.deductions.healthInsurance + item.deductions.retirement401k,
     other: item.deductions.other,
+    paye: item.deductions.federalWithholding,
+    pension: item.deductions.socialSecurity,
+    nhf: item.deductions.medicare,
+    stateLevy: item.deductions.stateIncomeTax,
+    localLevy: item.deductions.localIncomeTax,
+    voluntaryRetirement: item.deductions.retirement401k,
+    statutoryEmployeeTotal: item.deductions.socialSecurity + item.deductions.medicare,
     currency: item.currency,
   }));
 
@@ -1020,6 +1373,7 @@ export async function payrollReports() {
       taxPayable: round2(run.totals.deductions),
       benefitsPayable: round2(run.totals.employerCost * 0.25),
       retirementPayable: round2(run.totals.employerCost * 0.12),
+      pensionPayable: round2(run.totals.employerCost * 0.12),
     },
   }));
 
@@ -1030,6 +1384,7 @@ export async function payrollReports() {
     laborCostAnalysis: laborCostByDepartment,
     payrollTaxLiability: taxLiability,
     contractor1099,
+    contractorPayments: contractor1099,
     accountingEntries,
   };
 }
