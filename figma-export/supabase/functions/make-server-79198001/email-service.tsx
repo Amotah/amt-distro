@@ -1,8 +1,8 @@
 import * as supportService from './support-service.tsx';
 
 const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY') || '';
-const FROM_EMAIL = 'support@amtdistro.com';
-const SUPPORT_EMAIL = 'support@amtdistro.com';
+const FROM_EMAIL = 'GWMusic Support <support@gwmusic.com.ng>';
+const SUPPORT_EMAIL = 'support@gwmusic.com.ng';
 
 interface EmailTemplateData {
   [key: string]: string | number | boolean;
@@ -55,46 +55,129 @@ async function sendEmail(
 export async function sendTicketCreationEmail(
   ticket: supportService.SupportTicket
 ): Promise<boolean> {
-  const htmlBody = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f5f5f5;">
-      <div style="background-color: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-        <h2 style="color: #333; margin-bottom: 16px;">Support Ticket Created</h2>
-        
-        <p style="color: #666; margin-bottom: 12px;">Hello${ticket.userName ? ` ${ticket.userName}` : ''},</p>
-        
-        <p style="color: #666; margin-bottom: 24px;">
-          Thank you for contacting us! We've received your support request and assigned it a tracking number.
-        </p>
+  const categoryLabels: Record<string, string> = {
+    bug_report: 'Bug Report',
+    question: 'General Inquiry',
+    feature_request: 'Feature Request / Partnership',
+    billing_inquiry: 'Billing & Payments',
+    account_access: 'Account Access',
+    technical_issue: 'Technical Support',
+    other: 'Feedback / Other',
+  };
+  const priorityLabels: Record<string, string> = {
+    low: 'Low',
+    normal: 'Normal',
+    high: 'High',
+    urgent: 'Urgent',
+  };
+  const submittedAt = new Date(ticket.createdAt).toLocaleString('en-GB', {
+    day: '2-digit', month: 'long', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', timeZoneName: 'short',
+  });
+  const categoryLabel = categoryLabels[ticket.category] || ticket.category;
+  const priorityLabel = priorityLabels[ticket.priority] || ticket.priority;
 
-        <div style="background-color: #f9f9f9; padding: 16px; border-left: 4px solid #007bff; margin-bottom: 24px;">
-          <p style="margin: 0 0 8px 0; color: #333;"><strong>Ticket Number:</strong> ${ticket.srNumber}</p>
-          <p style="margin: 0 0 8px 0; color: #333;"><strong>Subject:</strong> ${ticket.subject}</p>
-          <p style="margin: 0 0 8px 0; color: #333;"><strong>Category:</strong> ${ticket.category}</p>
-          <p style="margin: 0 0 8px 0; color: #333;"><strong>Status:</strong> ${ticket.status}</p>
-          <p style="margin: 0; color: #333;"><strong>Priority:</strong> ${ticket.priority}</p>
-        </div>
+  // Strip the "From: Name\n\n" prefix that ContactUs prepends to expose the raw message
+  const rawMessage = ticket.message.replace(/^From:[^\n]+\n\n/, '');
 
-        <h3 style="color: #333; margin-top: 20px; margin-bottom: 12px;">Your Message:</h3>
-        <p style="color: #666; background-color: #f9f9f9; padding: 12px; border-radius: 4px; white-space: pre-wrap;">
-          ${ticket.message}
-        </p>
+  const htmlBody = `<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Message Received – GWMusic</title></head>
+<body style="margin:0;padding:0;background:#0A0A0A;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0A0A0A;padding:32px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;">
 
-        <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;">
+        <!-- Header -->
+        <tr><td style="background:linear-gradient(135deg,#1A0A00 0%,#0A0A0A 100%);border-radius:12px 12px 0 0;padding:36px 40px 28px;text-align:center;border-bottom:2px solid #FF6B00;">
+          <p style="margin:0 0 8px;font-size:28px;font-weight:800;color:#FF6B00;letter-spacing:-0.5px;">GWMusic</p>
+          <p style="margin:0;font-size:13px;color:#B3B3B3;letter-spacing:0.08em;text-transform:uppercase;">by AMT Distro</p>
+        </td></tr>
 
-        <p style="color: #666; margin-bottom: 12px;">
-          Our support team will review your request and get back to you as soon as possible. You'll receive updates on this ticket via email.
-        </p>
+        <!-- Body -->
+        <tr><td style="background:#161616;padding:36px 40px;">
 
-        <p style="color: #999; font-size: 12px; margin-top: 20px;">
-          If you need to check on your ticket or add more information, please keep the ticket number ${ticket.srNumber} handy.
-        </p>
-      </div>
-    </div>
-  `;
+          <!-- Greeting -->
+          <p style="margin:0 0 8px;font-size:22px;font-weight:700;color:#FFFFFF;">Thanks for reaching out${ticket.userName ? `, ${ticket.userName.split(' ')[0]}` : ''}!</p>
+          <p style="margin:0 0 28px;font-size:15px;color:#B3B3B3;line-height:1.6;">We've received your message and our support team will get back to you within <strong style="color:#FFD600;">24 hours</strong> on business days. Here's a full copy of everything you submitted.</p>
+
+          <!-- Ticket reference badge -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1410;border:1px solid #FF6B00;border-radius:8px;margin-bottom:28px;">
+            <tr><td style="padding:16px 20px;">
+              <p style="margin:0 0 4px;font-size:11px;text-transform:uppercase;letter-spacing:0.12em;color:#FF6B00;font-weight:700;">Ticket Reference</p>
+              <p style="margin:0;font-size:20px;font-weight:800;color:#FFD600;letter-spacing:0.04em;">${ticket.srNumber}</p>
+            </td></tr>
+          </table>
+
+          <!-- Submission details table -->
+          <p style="margin:0 0 12px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#FF6B00;">Submission Details</p>
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#0F0F0F;border:1px solid #2A2A2A;border-radius:8px;margin-bottom:28px;overflow:hidden;">
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;width:38%;font-size:13px;color:#8D8D8D;font-weight:600;">Full Name</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${ticket.userName || '—'}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Email Address</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${ticket.userEmail}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Subject</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${ticket.subject}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Category</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${categoryLabel}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Priority</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${priorityLabel}</td>
+            </tr>
+            <tr style="border-bottom:1px solid #2A2A2A;">
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Status</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">Open</td>
+            </tr>
+            <tr>
+              <td style="padding:12px 16px;font-size:13px;color:#8D8D8D;font-weight:600;">Submitted On</td>
+              <td style="padding:12px 16px;font-size:13px;color:#FFFFFF;">${submittedAt}</td>
+            </tr>
+          </table>
+
+          <!-- Message body -->
+          <p style="margin:0 0 12px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.1em;color:#FF6B00;">Your Message</p>
+          <div style="background:#0F0F0F;border:1px solid #2A2A2A;border-left:4px solid #FF6B00;border-radius:8px;padding:20px;margin-bottom:28px;">
+            <p style="margin:0;font-size:14px;color:#D4D4D4;line-height:1.8;white-space:pre-wrap;">${rawMessage}</p>
+          </div>
+
+          <!-- What happens next -->
+          <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:#1A1A1A;border-radius:8px;margin-bottom:28px;">
+            <tr><td style="padding:20px 24px;">
+              <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#FFFFFF;">What happens next?</p>
+              <p style="margin:0 0 8px;font-size:13px;color:#B3B3B3;line-height:1.6;">✅ &nbsp;You'll receive a reply to <strong style="color:#FFFFFF;">${ticket.userEmail}</strong> once a team member reviews your request.</p>
+              <p style="margin:0 0 8px;font-size:13px;color:#B3B3B3;line-height:1.6;">📋 &nbsp;Quote your ticket number <strong style="color:#FFD600;">${ticket.srNumber}</strong> in any follow-up communication.</p>
+              <p style="margin:0;font-size:13px;color:#B3B3B3;line-height:1.6;">⏱ &nbsp;Average response time: <strong style="color:#FFFFFF;">under 24 hours</strong> (Mon – Fri, 9 AM – 6 PM WAT).</p>
+            </td></tr>
+          </table>
+
+          <!-- CTA -->
+          <p style="margin:0;font-size:13px;color:#8D8D8D;line-height:1.6;">Need to reach us directly? Email <a href="mailto:support@gwmusic.com.ng" style="color:#FF6B00;text-decoration:none;">support@gwmusic.com.ng</a> or call <a href="tel:+2348162988301" style="color:#FF6B00;text-decoration:none;">+234 816 298 8301</a>.</p>
+
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="background:#0F0F0F;border-radius:0 0 12px 12px;padding:24px 40px;text-align:center;border-top:1px solid #2A2A2A;">
+          <p style="margin:0 0 6px;font-size:12px;color:#555;">GWMusic · Powered by AMT Distro · Lagos, Nigeria</p>
+          <p style="margin:0;font-size:11px;color:#444;">This is an automated confirmation. Please do not reply to this email — use <a href="mailto:support@gwmusic.com.ng" style="color:#FF6B00;text-decoration:none;">support@gwmusic.com.ng</a> instead.</p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 
   return await sendEmail(
     ticket.userEmail,
-    `[${ticket.srNumber}] Support Ticket Created: ${ticket.subject}`,
+    `[${ticket.srNumber}] We've received your message – GWMusic Support`,
     htmlBody
   );
 }

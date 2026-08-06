@@ -1,4 +1,5 @@
 import { getSupabaseClient } from '../../../utils/supabase/client';
+import { publicAnonKey } from '../../../utils/supabase/info';
 import { BACKEND_API_BASE_URL } from './backend-api-base';
 
 const API_BASE_URL = BACKEND_API_BASE_URL;
@@ -61,6 +62,7 @@ async function publicApiCall<T>(endpoint: string, options: RequestInit = {}): Pr
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers: {
+      'Authorization': `Bearer ${publicAnonKey}`,
       'Content-Type': 'application/json',
       ...options.headers,
     },

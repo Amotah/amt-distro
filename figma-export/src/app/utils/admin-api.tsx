@@ -1,5 +1,6 @@
 import { publicAnonKey } from '../../../utils/supabase/info';
 import { getSupabaseClient } from '../../../utils/supabase/client';
+import { getStoredAccessToken } from './auth-session';
 import { BACKEND_API_BASE_URL } from './backend-api-base';
 
 /**
@@ -16,15 +17,18 @@ async function getAuthToken(): Promise<string> {
     const supabase = getSupabaseClient();
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) {
-      // Keep sessionStorage in sync so other code that reads it stays current
+      // Keep both admin and shared session keys current for older callers.
       sessionStorage.setItem('admin_access_token', session.access_token);
+      sessionStorage.setItem('access_token', session.access_token);
       return session.access_token;
     }
   } catch {
     // fall through to sessionStorage fallback
   }
-  const token = sessionStorage.getItem('admin_access_token');
+
+  const token = sessionStorage.getItem('admin_access_token') || getStoredAccessToken();
   if (!token) throw new Error('Not authenticated');
+  sessionStorage.setItem('admin_access_token', token);
   return token;
 }
 

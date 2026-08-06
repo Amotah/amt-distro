@@ -23,32 +23,42 @@ export function FAQ() {
   const rightColumnFaqs = FAQ_KEYS.filter((_, index) => index % 2 === 1).map((faq, localIndex) => ({ faq, index: localIndex * 2 + 1 }));
 
   return (
-    <section id="faq" className="relative overflow-hidden bg-[radial-gradient(circle_at_top_right,_rgba(255,107,0,0.08),_transparent_35%),linear-gradient(180deg,#0a0a0a_0%,#0f0d0a_50%,#0a0a0a_100%)] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
-      <div className="mx-auto w-full max-w-7xl">
-        {/* Header */}
-        <div className="mb-14 text-center">
-          <p className="landing-section-kicker">Support</p>
-          <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full border border-[#FF6B00]/30 bg-gradient-to-br from-[#FF6B00]/15 to-[#FFD600]/8 shadow-[0_8px_24px_rgba(255,107,0,0.15)]">
-            <HelpCircle className="h-8 w-8 text-[#FF6B00]" />
+    <section id="faq" className="relative overflow-hidden bg-gradient-to-b from-[#050505] via-[#0A0A0A] to-[#050505] px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
+      {/* Background Effects */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute top-1/4 left-1/4 w-80 h-80 bg-[#FF6B00]/15 rounded-full mix-blend-multiply filter blur-3xl opacity-20 -translate-x-1/2" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-[#FFD600]/10 rounded-full mix-blend-multiply filter blur-3xl opacity-15 translate-x-1/2" />
+      </div>
+
+      <div className="relative mx-auto w-full max-w-7xl">
+        {/* Section Header */}
+        <div className="mb-16 text-center">
+          <div className="inline-flex h-14 w-14 items-center justify-center rounded-xl border border-[#FF6B00]/30 bg-gradient-to-br from-[#FF6B00]/15 to-[#FFD600]/8 shadow-lg shadow-[#FF6B00]/20 mb-6">
+            <HelpCircle className="h-7 w-7 text-[#FF6B00]" />
           </div>
-          <h2 className="text-4xl mb-4 text-white font-bold">{t('faq.title', 'Frequently Asked Questions')}</h2>
-          <p className="text-[#B3B3B3] text-lg">
+          <h2 className="text-4xl mb-4 text-white font-black lg:text-5xl">
+            {t('faq.title', 'Frequently Asked Questions')}
+          </h2>
+          <p className="text-xl text-white/70 max-w-2xl mx-auto">
             {t('faq.subtitle', 'Everything you need to know about AMT DISTRO')}
           </p>
         </div>
 
-        {/* FAQ List */}
-        <div className="grid gap-4 md:grid-cols-2 md:items-start">
+        {/* FAQ Grid */}
+        <div className="grid gap-6 md:grid-cols-2 md:items-start mb-12">
+          {/* Left Column */}
           <div className="space-y-4">
             {leftColumnFaqs.map(({ faq, index }) => (
-              <Card
+              <div
                 key={faq.qKey}
-                className="landing-stagger-item landing-faq-card group overflow-hidden cursor-pointer rounded-2xl border border-white/10 bg-gradient-to-br from-[#161616]/80 to-[#0f0d0a]/80 transition-all duration-300 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(255,107,0,0.1)]"
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                className="group cursor-pointer overflow-hidden rounded-xl border border-[#FF6B00]/20 bg-gradient-to-br from-[#0D0D0D]/80 to-[#050505]/90 transition-all duration-300 hover:border-[#FF6B00]/50 hover:shadow-lg hover:shadow-[#FF6B00]/10"
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-base font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
+                    <h3 className="text-base font-semibold text-white leading-6 pr-2 group-hover:text-[#FFD600] transition-colors duration-300">
+                      {t(faq.qKey, faq.qFb)}
+                    </h3>
                     <ChevronDown
                       className={`h-5 w-5 text-[#FF6B00] flex-shrink-0 transition-all duration-300 ${
                         openIndex === index ? 'rotate-180' : ''
@@ -56,25 +66,28 @@ export function FAQ() {
                     />
                   </div>
                   {openIndex === index && (
-                    <div className="mt-5 border-t border-white/10 pt-5 text-[#B3B3B3] leading-relaxed text-sm animate-faq-expand">
+                    <div className="mt-5 border-t border-[#FF6B00]/20 pt-5 text-white/80 leading-relaxed text-sm animate-in fade-in duration-300">
                       {t(faq.aKey, faq.aFb)}
                     </div>
                   )}
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
 
+          {/* Right Column */}
           <div className="space-y-4">
             {rightColumnFaqs.map(({ faq, index }) => (
-              <Card
+              <div
                 key={faq.qKey}
-                className="landing-stagger-item landing-faq-card group overflow-hidden cursor-pointer rounded-2xl border border-white/10 bg-gradient-to-br from-[#161616]/80 to-[#0f0d0a]/80 transition-all duration-300 hover:border-white/20 hover:shadow-[0_20px_40px_rgba(255,107,0,0.1)]"
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
+                className="group cursor-pointer overflow-hidden rounded-xl border border-[#FF6B00]/20 bg-gradient-to-br from-[#0D0D0D]/80 to-[#050505]/90 transition-all duration-300 hover:border-[#FF6B00]/50 hover:shadow-lg hover:shadow-[#FF6B00]/10"
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-base font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
+                    <h3 className="text-base font-semibold text-white leading-6 pr-2 group-hover:text-[#FFD600] transition-colors duration-300">
+                      {t(faq.qKey, faq.qFb)}
+                    </h3>
                     <ChevronDown
                       className={`h-5 w-5 text-[#FF6B00] flex-shrink-0 transition-all duration-300 ${
                         openIndex === index ? 'rotate-180' : ''
@@ -82,22 +95,23 @@ export function FAQ() {
                     />
                   </div>
                   {openIndex === index && (
-                    <div className="mt-5 border-t border-white/10 pt-5 text-[#B3B3B3] leading-relaxed text-sm animate-faq-expand">
+                    <div className="mt-5 border-t border-[#FF6B00]/20 pt-5 text-white/80 leading-relaxed text-sm animate-in fade-in duration-300">
                       {t(faq.aKey, faq.aFb)}
                     </div>
                   )}
                 </div>
-              </Card>
+              </div>
             ))}
           </div>
         </div>
 
-        {/* Contact Support */}
-        <div className="mt-10 text-center">
-          <p className="text-[#B3B3B3] mb-4">{t('faq.stillHave', 'Still have questions?')}</p>
+        {/* Contact Support CTA */}
+        <div className="rounded-2xl border border-[#FF6B00]/20 bg-gradient-to-r from-[#FF6B00]/10 to-[#FFD600]/5 p-8 text-center backdrop-blur-sm">
+          <p className="text-white/80 mb-4 text-lg">{t('faq.stillHave', 'Still have questions?')}</p>
+          <p className="text-white/70 mb-6">Get in touch with our support team and we'll help you out.</p>
           <a
             href="/contact"
-            className="inline-flex items-center gap-2 text-[#FF6B00] hover:text-[#FFD600] font-medium transition-colors"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#FF6B00] to-[#FF8C00] text-white font-semibold rounded-lg hover:shadow-lg hover:shadow-[#FF6B00]/40 transition-all duration-300"
           >
             {t('faq.contactSupport', 'Contact our support team')}
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
