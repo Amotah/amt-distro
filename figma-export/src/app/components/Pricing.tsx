@@ -106,11 +106,11 @@ export function Pricing({ onSelectPlan }: PricingProps) {
         </div>
 
         {/* Pricing Cards */}
-        <div className="grid gap-8 md:grid-cols-3">
+        <div className="grid gap-8 md:grid-cols-3 md:auto-rows-max">
           {PLAN_KEYS.map((plan) => (
             <div
               key={plan.id}
-              className={`group relative overflow-hidden rounded-2xl transition-all duration-500 ${
+              className={`group relative flex flex-col overflow-hidden rounded-2xl transition-all duration-500 ${
                 plan.popular
                   ? 'md:scale-105 border-2 border-[#FFD600] bg-gradient-to-br from-[#1A0F05]/90 to-[#0D0D0D]/90 shadow-2xl shadow-[#FFD600]/20'
                   : 'border border-[#FF6B00]/20 bg-gradient-to-br from-[#0D0D0D]/80 to-[#050505]/80 hover:border-[#FF6B00]/50 hover:shadow-xl hover:shadow-[#FF6B00]/10'
@@ -121,12 +121,12 @@ export function Pricing({ onSelectPlan }: PricingProps) {
               
               {/* Popular Badge */}
               {plan.popular && (
-                <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-white text-xs font-bold uppercase tracking-widest shadow-lg">
+                <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1.5 rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-white text-xs font-bold uppercase tracking-widest shadow-lg z-10">
                   {t('pricing.popular', 'Most Popular')}
                 </div>
               )}
 
-              <div className="relative p-8">
+              <div className="relative p-8 flex flex-col h-full">
                 {/* Header */}
                 <div className="mb-8">
                   <h3 className="text-2xl font-bold text-white mb-2">{t(plan.nameKey, plan.nameFb)}</h3>
@@ -154,7 +154,7 @@ export function Pricing({ onSelectPlan }: PricingProps) {
                 </Button>
 
                 {/* Features List */}
-                <div className="space-y-3 mb-8 pb-8 border-b border-[#FF6B00]/20">
+                <div className="space-y-3 mb-8 pb-8 border-b border-[#FF6B00]/20 flex-grow">
                   {plan.featureKeys.map((feature) => (
                     <div key={feature.key} className="flex items-start gap-3">
                       <svg className="w-5 h-5 text-[#FF6B00] flex-shrink-0 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
@@ -166,7 +166,7 @@ export function Pricing({ onSelectPlan }: PricingProps) {
                 </div>
 
                 {/* Learn More Link */}
-                <div className="text-center">
+                <div className="text-center mt-auto">
                   <a
                     href={plan.learnMoreUrl}
                     className="text-sm font-medium text-[#FF6B00] hover:text-[#FFD600] transition-colors underline"
