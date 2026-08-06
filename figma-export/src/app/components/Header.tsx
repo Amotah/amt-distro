@@ -4,7 +4,6 @@ import {
   ChevronDown,
   CircleHelp,
   Globe,
-  Home,
   Info,
   Layers3,
   LogIn,
@@ -276,11 +275,6 @@ export function Header({ onNavigate }: HeaderProps) {
             </div>
 
             <nav className="mobile-nav-list">
-              <button className={mobileNavItemClass(isActivePath(['/']))} onClick={() => handleNavClick('landing')}>
-                <Home className="h-4 w-4" />
-                <span>Home</span>
-              </button>
-
               <button
                 className={mobileNavItemClass(isActivePath(['/who-we-are', '/our-partners', '/ceo-message']))}
                 onClick={() => setMobileAboutOpen((prev) => !prev)}
