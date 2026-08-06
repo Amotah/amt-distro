@@ -182,9 +182,3 @@ export function Pricing({ onSelectPlan }: PricingProps) {
     </section>
   );
 }
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
