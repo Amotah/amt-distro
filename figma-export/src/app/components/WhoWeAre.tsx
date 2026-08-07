@@ -1,128 +1,127 @@
 import { Card } from './ui/card';
-import { Globe, Target, Award, Heart } from 'lucide-react';
+import { Globe, Target, Heart, Award, Sparkles } from 'lucide-react';
 
 export function WhoWeAre() {
   return (
     <section className="bg-[#0A0A0A] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
       <div className="mx-auto max-w-7xl">
-        {/* Hero Section */}
-        <div className="mb-12 text-center">
-          <div className="mb-4 inline-flex rounded-full border border-[#FF6B00]/20 bg-[#1A1410] px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#FFD600]">
+        <div className="mb-14 text-center">
+          <span className="inline-flex rounded-full border border-[#FF6B00]/20 bg-[#1A1410] px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#FFD600]">
             About Us
-          </div>
-          <h1 className="text-[2rem] font-bold text-white sm:text-[2.5rem]">Who We Are</h1>
-          <p className="mx-auto mt-3 max-w-3xl text-sm leading-6 text-[#B3B3B3]">
-            We're on a mission to democratize music distribution and empower artists across Africa
-            and beyond
+          </span>
+          <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl">
+            Empowering African artists with modern music distribution.
+          </h1>
+          <p className="mx-auto mt-5 max-w-3xl text-base leading-7 text-[#B3B3B3]">
+            AMT DISTRO is the platform built to remove complexity, protect your earnings, and help
+            creators grow across Africa and the world. We make distribution simple, transparent,
+            and artist-first.
           </p>
         </div>
 
-        {/* Story Section */}
-        <Card className="mb-10 border-[#FF6B00]/10 bg-[#161616] p-8 sm:p-10">
-          <h2 className="mb-5 text-2xl font-bold text-white">Our Story</h2>
-          <div className="space-y-4 text-sm leading-7 text-[#B3B3B3]">
-            <p>
-              Founded in 2020, <span className="font-semibold text-white">AMT DISTRO</span> emerged from a simple observation: talented artists in
-              Nigeria and across Africa were being held back by complex, expensive, and unfair music
-              distribution systems. We believed there had to be a better way.
-            </p>
-            <p>
-              Starting with just a handful of artists in Lagos, we built a platform that puts
-              creators first. No hidden fees, no percentage cuts, just straightforward distribution
-              that lets you keep 100% of your royalties. Today, we're proud to serve thousands of
-              artists across the continent and around the world.
-            </p>
-            <p>
-              Our team combines decades of experience in music, technology, and artist development.
-              We're musicians, engineers, and music lovers who understand the challenges artists
-              face because many of us have faced them ourselves.
-            </p>
-          </div>
-        </Card>
-
-        {/* Values */}
-        <div className="mb-12">
-          <h2 className="mb-10 text-center text-2xl font-bold text-white">Our Core Values</h2>
-          <div className="grid gap-5 md:grid-cols-3">
-            <Card className="border-[#FF6B00]/10 bg-[#161616] p-6 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10">
-                <Heart className="h-6 w-6 text-[#FF6B00]" />
+        <div className="mb-14 grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card className="border-[#FF6B00]/10 bg-[#161616] p-8 sm:p-10">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm uppercase tracking-[0.25em] text-[#FFD600]/90">Our story</p>
+                <h2 className="mt-4 text-3xl font-bold text-white">From Lagos beginnings to global distribution.</h2>
               </div>
-              <h3 className="mb-2 text-lg font-bold text-white">Artist-First</h3>
-              <p className="text-sm leading-6 text-[#B3B3B3]">
-                Every decision we make is guided by what's best for artists. You keep 100% of your
-                royalties because your music, your earnings.
+              <div className="inline-flex items-center gap-2 rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10 px-4 py-2 text-sm font-semibold text-white">
+                <Sparkles className="h-4 w-4 text-white" />
+                Founded 2020
+              </div>
+            </div>
+
+            <div className="space-y-5 text-sm leading-7 text-[#D1D5DB]">
+              <p>
+                We launched AMT DISTRO because talented creators were being held back by opaque fees,
+                confusing distribution rules, and platforms that didn’t prioritize artists. Our goal
+                is empowering independent musicians with the tools they need to thrive.
+              </p>
+              <p>
+                Today, we serve thousands of artists, labels, and managers across Africa and beyond.
+                Our platform combines fast uploads, reliable payments, and analytics that help you
+                make smarter decisions for every release.
+              </p>
+              <p>
+                Built by musicians, product builders, and rights experts, AMT DISTRO removes friction
+                and lets creators focus on what matters most: making music and growing their audience.
+              </p>
+            </div>
+          </Card>
+
+          <div className="grid gap-6">
+            <Card className="border-[#FF6B00]/10 bg-[#161616] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FF6B00]/10 text-[#FF6B00]">
+                <Target className="h-6 w-6" />
+              </div>
+              <h3 className="text-xl font-semibold text-white">Our Mission</h3>
+              <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+                Give every artist access to fair distribution, native rights ownership, and tools that
+                let music reach the world without compromise.
               </p>
             </Card>
 
-            <Card className="border-[#FF6B00]/10 bg-[#161616] p-6 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10">
-                <Globe className="h-6 w-6 text-[#FF6B00]" />
+            <Card className="border-[#FF6B00]/10 bg-[#161616] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#FF6B00]/10 text-[#FF6B00]">
+                <Award className="h-6 w-6" />
               </div>
-              <h3 className="mb-2 text-lg font-bold text-white">Global Reach</h3>
-              <p className="text-sm leading-6 text-[#B3B3B3]">
-                We connect African artists to the world while making sure the world discovers
-                African talent. Distribution to 150+ platforms worldwide.
-              </p>
-            </Card>
-
-            <Card className="border-[#FF6B00]/10 bg-[#161616] p-6 text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10">
-                <Target className="h-6 w-6 text-[#FF6B00]" />
-              </div>
-              <h3 className="mb-2 text-lg font-bold text-white">Transparency</h3>
-              <p className="text-sm leading-6 text-[#B3B3B3]">
-                No hidden fees, no surprises. Clear pricing, detailed analytics, and honest
-                communication at every step.
+              <h3 className="text-xl font-semibold text-white">Our Vision</h3>
+              <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+                Build the most trusted music distribution ecosystem for African creators, with
+                global reach and a commitment to transparency.
               </p>
             </Card>
           </div>
         </div>
 
-        {/* Mission & Vision */}
-        <div className="mb-12 grid gap-5 md:grid-cols-2">
-          <Card className="border-[#FF6B00]/10 bg-[#161616] p-6">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-[#FF6B00] to-[#FFD600]">
-              <Target className="h-5 w-5 text-white" />
+        <div className="mb-14 grid gap-6 md:grid-cols-3">
+          <Card className="border-[#FF6B00]/10 bg-[#161616] p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10 text-[#FF6B00]">
+              <Heart className="h-6 w-6" />
             </div>
-            <h3 className="mb-3 text-xl font-bold text-white">Our Mission</h3>
-            <p className="text-sm leading-7 text-[#B3B3B3]">
-              To provide every artist with the tools, technology, and support they need to share
-              their music with the world and build sustainable careers in the music industry.
+            <h3 className="text-xl font-semibold text-white">Artist-First</h3>
+            <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+              Every experience is designed so artists keep 100% of royalties and stay in control.
             </p>
           </Card>
-
-          <Card className="border-[#FF6B00]/10 bg-[#161616] p-6">
-            <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-lg bg-gradient-to-br from-[#FF6B00] to-[#FFD600]">
-              <Award className="h-5 w-5 text-white" />
+          <Card className="border-[#FF6B00]/10 bg-[#161616] p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10 text-[#FF6B00]">
+              <Globe className="h-6 w-6" />
             </div>
-            <h3 className="mb-3 text-xl font-bold text-white">Our Vision</h3>
-            <p className="text-sm leading-7 text-[#B3B3B3]">
-              To become Africa's leading music distribution platform, recognized globally for
-              empowering independent artists and labels to compete on equal footing with major
-              labels.
+            <h3 className="text-xl font-semibold text-white">Global Reach</h3>
+            <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+              We connect African artists to listeners on 150+ streaming, download, and social platforms.
+            </p>
+          </Card>
+          <Card className="border-[#FF6B00]/10 bg-[#161616] p-8 text-center">
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full border border-[#FF6B00]/20 bg-[#FF6B00]/10 text-[#FF6B00]">
+              <Sparkles className="h-6 w-6" />
+            </div>
+            <h3 className="text-xl font-semibold text-white">Transparent</h3>
+            <p className="mt-3 text-sm leading-7 text-[#B3B3B3]">
+              Clear pricing, simple release workflows, and no hidden charges at any stage.
             </p>
           </Card>
         </div>
 
-        {/* Stats */}
-        <Card className="border-[#FF6B00]/20 bg-gradient-to-r from-[#FF6B00] to-[#FFD600] p-8 sm:p-10">
-          <div className="grid gap-6 text-center md:grid-cols-4">
+        <Card className="rounded-3xl border border-[#FF6B00]/20 bg-gradient-to-r from-[#FF6B00] to-[#FFD600] p-10 text-white">
+          <div className="grid gap-8 text-center md:grid-cols-4">
             <div>
-              <div className="text-3xl font-bold text-white">10K+</div>
-              <div className="mt-1 text-sm text-white/80">Active Artists</div>
+              <div className="text-4xl font-bold">10K+</div>
+              <div className="mt-2 text-sm text-white/80">Active Artists</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">150+</div>
-              <div className="mt-1 text-sm text-white/80">Distribution Platforms</div>
+              <div className="text-4xl font-bold">150+</div>
+              <div className="mt-2 text-sm text-white/80">Distribution Platforms</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">₦500M+</div>
-              <div className="mt-1 text-sm text-white/80">Paid to Artists</div>
+              <div className="text-4xl font-bold">₦500M+</div>
+              <div className="mt-2 text-sm text-white/80">Paid to Artists</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-white">45+</div>
-              <div className="mt-1 text-sm text-white/80">Countries Served</div>
+              <div className="text-4xl font-bold">45+</div>
+              <div className="mt-2 text-sm text-white/80">Countries Served</div>
             </div>
           </div>
         </Card>

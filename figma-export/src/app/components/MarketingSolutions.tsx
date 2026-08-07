@@ -132,57 +132,49 @@ export function MarketingSolutions() {
         </div>
 
         {/* Success Stories */}
-        <div className="rounded-2xl border border-[#FF6B00]/10 bg-[#161616] p-8 sm:p-10 mb-14">
-          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-8 text-center">Success Stories</h2>
-          <div className="grid md:grid-cols-2 gap-6">
-            <div className="rounded-xl bg-[#0A0A0A] border border-[#FF6B00]/10 p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 rounded-full overflow-hidden">
-                  <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80" alt="Timi Blaze" className="w-full h-full object-cover" />
+        <div className="rounded-2xl border border-[#FF6B00]/10 bg-[#161616] p-6 sm:p-8 mb-14">
+          <h2 className="text-2xl sm:text-3xl font-bold text-white mb-6 text-center">Success Stories</h2>
+          <div className="grid gap-5">
+            <div className="rounded-xl bg-[#0A0A0A] border border-[#FF6B00]/10 p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 rounded-full overflow-hidden w-12 h-12">
+                    <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&q=80" alt="Timi Blaze" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white text-base">Timi Blaze</h4>
+                    <p className="text-xs sm:text-sm text-[#B3B3B3]">Afrobeats Artist</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-semibold text-white">Timi Blaze</h4>
-                  <p className="text-sm text-[#B3B3B3]">Afrobeats Artist</p>
+                <div className="flex flex-wrap items-center gap-3 text-[0.78rem] text-[#B3B3B3]">
+                  <span className="inline-flex items-center gap-1 text-[#FF6B00]"><TrendingUp className="w-3.5 h-3.5" />+300% Streams</span>
+                  <span className="inline-flex items-center gap-1 text-[#FFD600]"><Users className="w-3.5 h-3.5" />15K Pre-Saves</span>
                 </div>
               </div>
-              <p className="text-[#B3B3B3] italic text-sm mb-4 leading-relaxed">
+              <p className="text-[#B3B3B3] italic text-sm leading-6 mb-2">
                 &ldquo;The pre-save campaign helped me get 15,000 saves before my album dropped. First week streams were 3x higher than my previous release!&rdquo;
               </p>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1 text-[#FF6B00]">
-                  <TrendingUp className="w-4 h-4" />
-                  <span>+300% Streams</span>
-                </div>
-                <div className="flex items-center gap-1 text-[#FFD600]">
-                  <Users className="w-4 h-4" />
-                  <span>15K Pre-Saves</span>
-                </div>
-              </div>
             </div>
 
-            <div className="rounded-xl bg-[#0A0A0A] border border-[#FF6B00]/10 p-6">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-14 h-14 rounded-full overflow-hidden">
-                  <img src="https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=100&q=80" alt="Chioma Ezeh" className="w-full h-full object-cover" />
+            <div className="rounded-xl bg-[#0A0A0A] border border-[#FF6B00]/10 p-5 sm:p-6">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="flex-shrink-0 rounded-full overflow-hidden w-12 h-12">
+                    <img src="https://images.unsplash.com/photo-1531746020798-e6953c6e8e04?w=100&q=80" alt="Chioma Ezeh" className="w-full h-full object-cover" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white text-base">Chioma Ezeh</h4>
+                    <p className="text-xs sm:text-sm text-[#B3B3B3]">Gospel Singer</p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="font-semibold text-white">Chioma Ezeh</h4>
-                  <p className="text-sm text-[#B3B3B3]">Gospel Singer</p>
+                <div className="flex flex-wrap items-center gap-3 text-[0.78rem] text-[#B3B3B3]">
+                  <span className="inline-flex items-center gap-1 text-[#FF6B00]"><Share2 className="w-3.5 h-3.5" />25K Link Clicks</span>
+                  <span className="inline-flex items-center gap-1 text-[#FFD600]"><Users className="w-3.5 h-3.5" />+150% Growth</span>
                 </div>
               </div>
-              <p className="text-[#B3B3B3] italic text-sm mb-4 leading-relaxed">
+              <p className="text-[#B3B3B3] italic text-sm leading-6 mb-2">
                 &ldquo;Smart Links made it so easy for my fans to find my music. The analytics showed me exactly where my audience is and how to reach them better.&rdquo;
               </p>
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1 text-[#FF6B00]">
-                  <Share2 className="w-4 h-4" />
-                  <span>25K Link Clicks</span>
-                </div>
-                <div className="flex items-center gap-1 text-[#FFD600]">
-                  <Users className="w-4 h-4" />
-                  <span>+150% Growth</span>
-                </div>
-              </div>
             </div>
           </div>
         </div>
