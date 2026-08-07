@@ -185,6 +185,11 @@ function getTabletBreadcrumbItems(items: BreadcrumbItem[], viewportWidth: number
   const parentItem = fullItems.length > 1 ? fullItems[fullItems.length - 2] : undefined;
   const schemaJson = buildSchemaItems(fullItems);
 
+  // Hide breadcrumb for the standalone About page to save vertical space on mobile
+  if (currentView === 'who-we-are') {
+    return null;
+  }
+
   const handleNavigate = (href: string) => {
     if (href === '/') {
       onNavigate('landing');

@@ -120,11 +120,7 @@ export function Hero() {
         <div className="hero-primary-panel overflow-hidden rounded-3xl border border-[#FF6B00]/30 bg-gradient-to-br from-[#0D0D0D]/80 via-[#1A0F05]/50 to-[#050505]/90 shadow-[0_20px_80px_rgba(255,107,0,0.15)] backdrop-blur-xl">
           <div className="grid items-stretch gap-0 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="relative px-6 py-12 sm:px-10 lg:px-14 lg:py-16">
-              {/* Badge */}
-              <div className="mb-8 inline-flex items-center gap-2 rounded-full border border-[#FF6B00]/40 bg-[#FF6B00]/15 px-4 py-2 text-[#FFD27A] backdrop-blur-sm hover:bg-[#FF6B00]/25 transition-colors">
-                <Play className="h-4 w-4 animate-pulse" />
-                <span className="text-xs font-semibold uppercase tracking-widest">{t('hero.badge', 'Watch Video')}</span>
-              </div>
+              {/* Badge removed: Watch Video removed to improve mobile fit */}
 
               {/* Heading */}
               <div className="max-w-2xl">
