@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
   Activity, RefreshCw, Download, Search, Filter, User,
-  Music, DollarSign, Unlock, LogIn, Upload, Settings, ChevronLeft, ChevronRight,
+  Music, DollarSign, Unlock, LogIn, Upload, Settings, ChevronLeft, ChevronRight, LifeBuoy, AlertTriangle, Megaphone,
 } from 'lucide-react';
 import * as adminApi from '../../utils/admin-api';
 
@@ -28,10 +28,16 @@ function actionBadge(action: UserActivityAction) {
     release_submitted:     { label: 'Release Submitted',     cls: 'bg-green-500/15 text-green-300 border border-green-500/30' },
     release_distributed:   { label: 'Distributed',           cls: 'bg-[#00E5FF]/15 text-[#00E5FF] border border-[#00E5FF]/30' },
     track_added:           { label: 'Track Added',           cls: 'bg-purple-500/15 text-purple-300 border border-purple-500/30' },
+    asset_uploaded:        { label: 'Asset Uploaded',        cls: 'bg-fuchsia-500/15 text-fuchsia-300 border border-fuchsia-500/30' },
     payout_requested:      { label: 'Payout Requested',      cls: 'bg-yellow-500/15 text-yellow-300 border border-yellow-500/30' },
     payment_initialized:   { label: 'Payment Init',          cls: 'bg-orange-500/15 text-orange-300 border border-orange-500/30' },
     payment_verified:      { label: 'Payment Verified',      cls: 'bg-green-500/15 text-green-300 border border-green-500/30' },
     subscription_cancelled:{ label: 'Sub Cancelled',         cls: 'bg-red-500/15 text-red-300 border border-red-500/30' },
+    promotion_created:     { label: 'Promotion Created',     cls: 'bg-pink-500/15 text-pink-300 border border-pink-500/30' },
+    support_ticket_created:{ label: 'Ticket Created',        cls: 'bg-sky-500/15 text-sky-300 border border-sky-500/30' },
+    support_ticket_replied:{ label: 'Ticket Replied',        cls: 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' },
+    support_ticket_closed: { label: 'Ticket Closed',         cls: 'bg-slate-500/15 text-slate-300 border border-slate-500/30' },
+    dispute_created:       { label: 'Dispute Filed',         cls: 'bg-rose-500/15 text-rose-300 border border-rose-500/30' },
     password_changed:      { label: 'Password Changed',      cls: 'bg-gray-500/15 text-gray-300 border border-gray-500/30' },
     login:                 { label: 'Login',                 cls: 'bg-teal-500/15 text-teal-300 border border-teal-500/30' },
   };
@@ -45,15 +51,21 @@ function resourceIcon(resource: string) {
   if (resource === 'payout') return <DollarSign className={cls} />;
   if (resource === 'profile') return <User className={cls} />;
   if (resource === 'track') return <Upload className={cls} />;
+  if (resource === 'artwork' || resource === 'asset') return <Upload className={cls} />;
   if (resource === 'payment') return <DollarSign className={cls} />;
   if (resource === 'subscription') return <Settings className={cls} />;
+  if (resource === 'promotion') return <Megaphone className={cls} />;
+  if (resource === 'support') return <LifeBuoy className={cls} />;
+  if (resource === 'dispute') return <AlertTriangle className={cls} />;
   if (resource === 'auth') return <LogIn className={cls} />;
   return <Activity className={cls} />;
 }
 
 const ACTION_GROUPS: { label: string; actions: UserActivityAction[] }[] = [
-  { label: 'Releases', actions: ['release_created', 'release_updated', 'release_submitted', 'release_distributed', 'track_added'] },
+  { label: 'Releases', actions: ['release_created', 'release_updated', 'release_submitted', 'release_distributed', 'track_added', 'asset_uploaded'] },
   { label: 'Payments', actions: ['payout_requested', 'payment_initialized', 'payment_verified', 'subscription_cancelled'] },
+  { label: 'Growth', actions: ['promotion_created'] },
+  { label: 'Support', actions: ['support_ticket_created', 'support_ticket_replied', 'support_ticket_closed', 'dispute_created'] },
   { label: 'Account', actions: ['profile_updated', 'password_changed', 'login'] },
 ];
 

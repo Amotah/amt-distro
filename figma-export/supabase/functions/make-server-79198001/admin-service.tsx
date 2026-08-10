@@ -127,10 +127,16 @@ export type UserActivityAction =
   | 'release_submitted'
   | 'release_distributed'
   | 'track_added'
+  | 'asset_uploaded'
   | 'payout_requested'
   | 'payment_initialized'
   | 'payment_verified'
   | 'subscription_cancelled'
+  | 'promotion_created'
+  | 'support_ticket_created'
+  | 'support_ticket_replied'
+  | 'support_ticket_closed'
+  | 'dispute_created'
   | 'password_changed'
   | 'login';
 

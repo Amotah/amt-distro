@@ -500,6 +500,13 @@ app.post('/make-server-79198001/payments/paystack/initialize', verifyAuth, async
       type: 'earnings',
       link: '/dashboard/payment-history',
     }).catch(() => {});
+    await adminService.logUserActivity(userId, userEmail, 'payment_initialized', 'payment', transaction.reference, {
+      plan: body.plan,
+      billingPeriod: body.billingPeriod,
+      amount: finalAmount,
+      releaseId,
+      promotionId,
+    }).catch(() => {});
 
     // Record coupon usage if a DB coupon was applied
     if (dbCouponId && couponCode && discountAmount > 0) {
@@ -563,6 +570,11 @@ app.post('/make-server-79198001/payments/paystack/verify', verifyAuth, async (c)
         body: `Your ${result.transaction.plan} payment was confirmed successfully.`,
         type: 'earnings',
         link: '/dashboard/payment-history',
+      }).catch(() => {});
+      await adminService.logUserActivity(userId, c.get('userEmail'), 'payment_verified', 'payment', result.transaction.reference || body.reference, {
+        plan: result.transaction.plan,
+        status: result.transaction.status,
+        amount: result.transaction.amount,
       }).catch(() => {});
     } else if (result.transaction.status === 'failed') {
       sendNotification({
@@ -711,6 +723,10 @@ app.post('/make-server-79198001/payments/subscription/partner/cancel', verifyAut
     // Store the updated subscription record using the correct key format
     const billingKey = `billing:history:${subscription.reference}`;
     await kv.set(billingKey, cancelledRecord);
+    await adminService.logUserActivity(userId, c.get('userEmail'), 'subscription_cancelled', 'subscription', subscription.reference, {
+      plan: subscription.plan,
+      expiresAt: subscription.expiresAt,
+    }).catch(() => {});
 
     return c.json({ 
       message: 'Subscription cancelled successfully',
@@ -1580,6 +1596,14 @@ app.post("/make-server-79198001/upload/complete", verifyAuth, async (c) => {
     }
 
     const result = await uploadService.completeUpload(body.sessionId);
+    await adminService.logUserActivity(
+      userId,
+      c.get('userEmail'),
+      session.fileType === 'audio' ? 'track_added' : 'asset_uploaded',
+      session.fileType === 'audio' ? 'track' : 'artwork',
+      result.path,
+      { fileName: session.fileName, source: 'chunked_upload' },
+    ).catch(() => {});
 
     return c.json(result);
   } catch (error) {
@@ -1598,6 +1622,14 @@ app.post("/make-server-79198001/upload/finalize", verifyAuth, async (c) => {
       body.path,
       body.fileType,
     );
+    await adminService.logUserActivity(
+      userId,
+      c.get('userEmail'),
+      body.fileType === 'audio' ? 'track_added' : 'asset_uploaded',
+      body.fileType === 'audio' ? 'track' : 'artwork',
+      result.path,
+      { source: 'signed_upload' },
+    ).catch(() => {});
 
     return c.json(result);
   } catch (error) {
@@ -1677,6 +1709,12 @@ app.post('/make-server-79198001/promotions', verifyAuth, async (c) => {
       releaseType: typeof body.releaseType === 'string' ? body.releaseType.trim() : null,
       releaseGenre: typeof body.releaseGenre === 'string' ? body.releaseGenre.trim() : null,
     });
+    await adminService.logUserActivity(userId, userEmail, 'promotion_created', 'promotion', campaign.id, {
+      planId: body.planId,
+      releaseTitle: campaign.releaseTitle,
+      artistName: campaign.artistName,
+      releaseId: campaign.releaseId,
+    }).catch(() => {});
 
     return c.json({ campaign });
   } catch (error) {
@@ -4352,6 +4390,11 @@ app.post("/make-server-79198001/payments/disputes", verifyAuth, async (c) => {
     if (error) throw error;
     // Record timeline: submitted
     await insertTimelineEvent(data.id, 'user', userEmail, 'submitted', `Dispute filed for transaction ${transactionReference} — ${disputeType.replace('_', ' ')}`);
+    await adminService.logUserActivity(userId, userEmail, 'dispute_created', 'dispute', data.id, {
+      transactionReference,
+      transactionAmount,
+      disputeType,
+    }).catch(() => {});
     return c.json({ dispute: mapDispute(data) }, 201);
   } catch (err) {
     console.error('Error creating dispute:', err);
@@ -7453,6 +7496,13 @@ app.post('/make-server-79198001/support/tickets', async (c) => {
       message,
       priority || 'normal'
     );
+    if (userId) {
+      await adminService.logUserActivity(userId, userEmail, 'support_ticket_created', 'support', ticket.id, {
+        category,
+        priority: priority || 'normal',
+        subject,
+      }).catch(() => {});
+    }
 
     // Send confirmation email to user
     await emailService.sendTicketCreationEmail(ticket);
@@ -7554,6 +7604,9 @@ app.post('/make-server-79198001/support/tickets/:ticketId/messages', verifyStaff
     // If ticket was waiting on user and they replied, reset status
     if (userId) {
       await emailService.sendNewTicketNotificationToAdmins(ticket);
+      await adminService.logUserActivity(userId, userEmail, 'support_ticket_replied', 'support', ticketId, {
+        messageLength: String(message).trim().length,
+      }).catch(() => {});
     }
 
     return c.json({ ticket }, 200);
@@ -7588,6 +7641,11 @@ app.patch('/make-server-79198001/support/tickets/:ticketId/close', verifyStaffPo
 
     // Send status change email
     await emailService.sendStatusChangeEmail(ticket, ticket.status);
+    if (userId) {
+      await adminService.logUserActivity(userId, userEmail, 'support_ticket_closed', 'support', ticketId, {
+        status: ticket.status,
+      }).catch(() => {});
+    }
 
     return c.json({ ticket }, 200);
   } catch (error) {
