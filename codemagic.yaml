@@ -1,0 +1,59 @@
+workflows:
+  ios-app-store:
+    name: AMT Distro - iOS App Store
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+
+    environment:
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.amotah.amtdistro
+      vars:
+        XCODE_WORKSPACE: "ios/App/App.xcworkspace"
+        XCODE_SCHEME: "App"
+      node: v18.20.0
+
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd figma-export
+          npm install
+
+      - name: Build web app
+        script: |
+          cd figma-export
+          npm run build
+
+      - name: Install Capacitor iOS platform
+        script: |
+          cd figma-export
+          # Add iOS platform if not already added
+          if [ ! -d "ios" ]; then
+            npx cap add ios
+          fi
+          npx cap sync ios
+
+      - name: Install CocoaPods
+        script: |
+          cd figma-export/ios/App
+          pod install
+
+      - name: Build and archive iOS app
+        script: |
+          cd figma-export
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+
+    artifacts:
+      - figma-export/build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+      - $HOME/Library/Developer/Xcode/DerivedData/**/Build/**/*.dSYM
+
+    publishing:
+      app_store_connect:
+        api_key: $APP_STORE_CONNECT_PRIVATE_KEY
+        key_id: $APP_STORE_CONNECT_KEY_IDENTIFIER
+        issuer_id: $APP_STORE_CONNECT_ISSUER_ID
+        submit_to_testflight: true
+        submit_to_app_store: false  # Set to true when ready for full release
