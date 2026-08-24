@@ -167,7 +167,8 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
       } catch (error) {
         await supabase.auth.signOut();
         adminApi.clearAdminToken();
-        throw new Error('Admin verification failed. Please contact support.');
+        // Re-throw the original error so the caller sees the real reason
+        throw error instanceof Error ? error : new Error('Admin verification failed. Please contact support.');
       }
     } catch (error) {
       setAdminUser(null);

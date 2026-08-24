@@ -70,14 +70,14 @@ const smartLinks = [
   {
     id: 1,
     title: 'Summer Vibes - All Platforms',
-    url: 'amtdistro.link/summer-vibes',
+    url: '/s/summer-vibes',
     clicks: 5642,
     platforms: ['Spotify', 'Apple Music', 'YouTube', 'Amazon'],
   },
   {
     id: 2,
     title: 'Electric Hearts - Universal Link',
-    url: 'amtdistro.link/electric-hearts',
+    url: '/s/electric-hearts',
     clicks: 3821,
     platforms: ['Spotify', 'Apple Music', 'YouTube', 'Deezer'],
   },

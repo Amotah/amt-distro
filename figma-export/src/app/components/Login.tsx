@@ -127,7 +127,9 @@ export function Login({ onLogin }: LoginProps) {
         user = await getCurrentUserProfileWithToken(data.session.access_token);
       } catch (profileError: any) {
         const profileMessage = String(profileError?.message || '');
-        const missingProfile = profileMessage.toLowerCase().includes('profile not found');
+        const missingProfile =
+          profileMessage.toLowerCase().includes('profile not found') ||
+          profileMessage.toLowerCase().includes('user account no longer exists');
 
         if (!missingProfile) {
           console.error('Profile fetch error:', profileError);

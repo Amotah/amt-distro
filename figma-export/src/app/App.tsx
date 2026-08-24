@@ -9,6 +9,7 @@ import { createLabelDashboardRouter } from './label-dashboard-routes';
 import { createAdminRouter } from './admin-routes';
 import { CURRENT_USER_PROFILE_UPDATED_EVENT, getCurrentUserProfile } from './utils/user-api';
 import { getDashboardPathForMode, getEffectiveDashboardMode } from './utils/dashboard-access';
+import { extractSmartLinkSlugFromPathname } from './utils/smartLinkUrl';
 import { supabase } from '../../utils/supabase/client';
 
 type EmailVerificationStatus = 'unknown' | 'verified' | 'unverified';
@@ -43,6 +44,7 @@ const PricingPage = lazy(() => import('./components/PricingPage').then((module) 
 const ForgotPassword = lazy(() => import('./components/ForgotPassword').then((module) => ({ default: module.ForgotPassword })));
 const ResetPassword = lazy(() => import('./components/ResetPassword').then((module) => ({ default: module.ResetPassword })));
 const ListenerApp = lazy(() => import('./components/ListenerApp').then((module) => ({ default: module.ListenerApp })));
+const SmartLinkRedirectPage = lazy(() => import('./components/SmartLinkRedirectPage').then((module) => ({ default: module.SmartLinkRedirectPage })));
 
 type View = 'landing' | 'get-started' | 'login' | 'forgot-password' | 'reset-password' | 'payment' | 'payment-success' | 'payment-failed' | 'payment-rejected' | 'who-we-are' | 'our-partners' | 'ceo-message' | 'technology' | 'blog' | 'marketing-solutions' | 'video-distribution' | 'rights-management' | 'royalty-advances' | 'promotion' | 'pricing' | 'listener-app' | 'fix-admin' | 'free-plan-details' | 'paid-plan-details' | 'partner-plan-details' | 'terms-conditions' | 'privacy-policy' | 'cookies-policy' | 'contact' | 'careers';
 
@@ -175,6 +177,11 @@ export default function App() {
   const [isSendingVerification, setIsSendingVerification] = useState(false);
   const [isRefreshingVerification, setIsRefreshingVerification] = useState(false);
   const previousRoleRef = useRef<string | null>(null);
+  const knownPublicPaths = useMemo(() => Object.values(PUBLIC_VIEW_PATHS), []);
+  const activeSmartLinkSlug = useMemo(
+    () => extractSmartLinkSlugFromPathname(window.location.pathname, knownPublicPaths),
+    [knownPublicPaths],
+  );
 
   const checkEmailVerification = async () => {
     if (!window.sessionStorage.getItem('access_token')) {
@@ -603,6 +610,15 @@ export default function App() {
         <RouterProvider router={adminRouter} />
         <Toaster position="top-right" richColors closeButton />
       </>
+    );
+  }
+
+  if (activeSmartLinkSlug) {
+    return (
+      <div className="min-h-screen bg-[#0A0A0A]">
+        {withPublicSuspense(<SmartLinkRedirectPage slug={activeSmartLinkSlug} />)}
+        <Toaster position="top-right" richColors closeButton />
+      </div>
     );
   }
 

@@ -143,6 +143,23 @@ async function verifyAuth(c: any, next: any) {
   await next();
 }
 
+// JWT-only auth for routes that must run before a user profile exists (e.g. profile creation)
+async function verifyAuthOnly(c: any, next: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return c.json({ error: 'Unauthorized: No token provided' }, 401);
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) {
+    return c.json({ error: 'Unauthorized: Invalid token' }, 401);
+  }
+
+  c.set('userId', user.id);
+  c.set('userEmail', user.email);
+  await next();
+}
+
 async function syncAuthUserMetadata(userId: string, updates: {
   email?: string;
   firstName?: string;
@@ -769,7 +786,7 @@ app.post('/make-server-79198001/payments/paystack/webhook', async (c) => {
 });
 
 // Create artist profile
-app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/artist", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -816,7 +833,7 @@ app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
 });
 
 // Create label profile
-app.post("/make-server-79198001/users/label", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/label", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -2301,9 +2318,19 @@ async function verifyAdmin(c: any, next: any) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const admin = await adminService.getAdminUser(userId);
+  let admin = await adminService.getAdminUser(userId);
   if (!admin) {
-    return c.json({ error: 'Admin access required' }, 403);
+    // Auto-provision: if the user profile carries role='admin' they get superadmin access
+    const userProfile = await userService.getUserByUserId(userId);
+    if (userProfile && (userProfile as any).role === 'admin') {
+      try {
+        admin = await adminService.createAdminUser(userId, 'superadmin', userId);
+      } catch {
+        return c.json({ error: 'Admin access required' }, 403);
+      }
+    } else {
+      return c.json({ error: 'Admin access required' }, 403);
+    }
   }
 
   c.set('adminUser', admin);

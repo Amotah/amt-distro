@@ -1,0 +1,53 @@
+import { generateSlug } from './smartLinkAlgorithms';
+
+const SMART_LINK_PREFIX = '/s/';
+const BLOCKED_PUBLIC_PREFIXES = ['/admin', '/dashboard', '/label-dashboard'];
+
+function normalizePath(pathname: string): string {
+  const trimmed = pathname.trim();
+  if (!trimmed) return '/';
+  const withLeadingSlash = trimmed.startsWith('/') ? trimmed : `/${trimmed}`;
+  const normalized = withLeadingSlash.replace(/\/+$/, '');
+  return normalized === '' ? '/' : normalized;
+}
+
+export function normalizeSmartLinkSlug(value: string): string {
+  return generateSlug(decodeURIComponent((value || '').trim()));
+}
+
+export function buildSmartLinkPath(slug: string): string {
+  const safeSlug = normalizeSmartLinkSlug(slug);
+  return `${SMART_LINK_PREFIX}${encodeURIComponent(safeSlug)}`;
+}
+
+export function buildSmartLinkUrl(slug: string, origin?: string): string {
+  const baseOrigin = (origin || (typeof window !== 'undefined' ? window.location.origin : 'https://amtdistro.link')).replace(/\/+$/, '');
+  return `${baseOrigin}${buildSmartLinkPath(slug)}`;
+}
+
+export function extractSmartLinkSlugFromPathname(pathname: string, knownPublicPaths: string[] = []): string | null {
+  const normalizedPath = normalizePath(pathname).toLowerCase();
+
+  if (BLOCKED_PUBLIC_PREFIXES.some((prefix) => normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`))) {
+    return null;
+  }
+
+  if (normalizedPath.startsWith(SMART_LINK_PREFIX)) {
+    const slugPart = pathname.slice(pathname.toLowerCase().indexOf(SMART_LINK_PREFIX) + SMART_LINK_PREFIX.length);
+    const slug = normalizeSmartLinkSlug(slugPart);
+    return slug || null;
+  }
+
+  const known = new Set(knownPublicPaths.map((path) => normalizePath(path).toLowerCase()));
+  if (known.has(normalizedPath)) {
+    return null;
+  }
+
+  const segments = normalizedPath.split('/').filter(Boolean);
+  if (segments.length !== 1) {
+    return null;
+  }
+
+  const slug = normalizeSmartLinkSlug(segments[0]);
+  return slug || null;
+}

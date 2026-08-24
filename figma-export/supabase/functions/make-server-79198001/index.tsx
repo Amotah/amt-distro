@@ -22,6 +22,7 @@ import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
 import * as smartLinksService from "./smart-links-service.tsx";
 import * as listenerService from "./listener-service.tsx";
+import * as releaseDSPService from "./release-dsp-service.tsx";
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -138,6 +139,23 @@ async function verifyAuth(c: any, next: any) {
   const activeUser = await userService.getUserByUserId(user.id);
   if (!activeUser) {
     return c.json({ error: 'Unauthorized: User account no longer exists' }, 401);
+  }
+
+  c.set('userId', user.id);
+  c.set('userEmail', user.email);
+  await next();
+}
+
+// JWT-only auth for routes that must run before a user profile exists (e.g. profile creation)
+async function verifyAuthOnly(c: any, next: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return c.json({ error: 'Unauthorized: No token provided' }, 401);
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) {
+    return c.json({ error: 'Unauthorized: Invalid token' }, 401);
   }
 
   c.set('userId', user.id);
@@ -872,7 +890,7 @@ app.post('/make-server-79198001/payments/paystack/webhook', async (c) => {
 });
 
 // Create artist profile
-app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/artist", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -919,7 +937,7 @@ app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
 });
 
 // Create label profile
-app.post("/make-server-79198001/users/label", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/label", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -1133,6 +1151,43 @@ app.get("/make-server-79198001/users/me", verifyAuth, async (c) => {
   } catch (error) {
     console.error('Error fetching user profile:', error);
     return c.json({ error: `Failed to fetch user profile: ${error.message}` }, 500);
+  }
+});
+
+// /users/profile — alias for /users/me (GET)
+app.get("/make-server-79198001/users/profile", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const user = await userService.getUserByUserId(userId);
+    if (!user) return c.json({ error: 'User profile not found' }, 404);
+    const permissions = userService.getUserPermissions(user);
+    return c.json({ user, permissions });
+  } catch (error) {
+    return c.json({ error: `Failed to fetch user profile: ${error.message}` }, 500);
+  }
+});
+
+// /users/profile — alias for /users/me (PUT)
+app.put("/make-server-79198001/users/profile", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+    const user = await userService.getUserByUserId(userId);
+    if (!user) return c.json({ error: 'User profile not found' }, 404);
+    const updatedUser = await userService.updateUser(user.id, body);
+    await syncAuthUserMetadata(user.userId, {
+      email: updatedUser?.email,
+      firstName: updatedUser?.firstName,
+      lastName: updatedUser?.lastName,
+      artistName: updatedUser?.role === 'artist' ? updatedUser.artistName : undefined,
+      labelName: updatedUser?.role === 'partner' ? updatedUser.labelName : undefined,
+      role: updatedUser?.role,
+      subscriptionTier: updatedUser?.subscriptionTier,
+    });
+    const permissions = userService.getUserPermissions(updatedUser!);
+    return c.json({ user: updatedUser, permissions });
+  } catch (error) {
+    return c.json({ error: `Failed to update user profile: ${error.message}` }, 500);
   }
 });
 
@@ -2436,9 +2491,19 @@ async function verifyAdmin(c: any, next: any) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const admin = await adminService.getAdminUser(userId);
+  let admin = await adminService.getAdminUser(userId);
   if (!admin) {
-    return c.json({ error: 'Admin access required' }, 403);
+    // Auto-provision: if the user profile carries role='admin' they get superadmin access
+    const userProfile = await userService.getUserByUserId(userId);
+    if (userProfile && (userProfile as any).role === 'admin') {
+      try {
+        admin = await adminService.createAdminUser(userId, 'superadmin', userId);
+      } catch {
+        return c.json({ error: 'Admin access required' }, 403);
+      }
+    } else {
+      return c.json({ error: 'Admin access required' }, 403);
+    }
   }
 
   c.set('adminUser', admin);
@@ -7222,5 +7287,84 @@ app.get("/make-server-79198001/smart-links/:linkId/analytics", verifyAuth, async
 
 // (Exported so callers within this module can reuse it)
 export { sendNotification };
+
+// ==================== RELEASE DSP URLS (SMART LINK LANDING PAGES) ====================
+
+// POST /releases/:releaseId/dsp-urls — save DSP URLs for a release (authenticated)
+app.post("/make-server-79198001/releases/:releaseId/dsp-urls", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const releaseId = c.req.param('releaseId');
+    const body = await c.req.json();
+    const { releaseTitle, artistName, coverArtUrl, urls } = body;
+
+    if (!releaseTitle || !artistName || !urls) {
+      return c.json({ error: 'releaseTitle, artistName, and urls are required' }, 400);
+    }
+
+    const result = await releaseDSPService.upsertReleaseDSPUrls(
+      releaseId,
+      userId,
+      { releaseTitle, artistName, coverArtUrl, urls }
+    );
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error saving DSP URLs:', error);
+    return c.json({ error: `Failed to save DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /releases/:releaseId/dsp-urls — get DSP URLs for a release (public)
+app.get("/make-server-79198001/releases/:releaseId/dsp-urls", async (c) => {
+  try {
+    const releaseId = c.req.param('releaseId');
+
+    const result = await releaseDSPService.getReleaseDSPUrls(releaseId);
+
+    if (!result) {
+      return c.json({ error: 'Release DSP URLs not found' }, 404);
+    }
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching DSP URLs:', error);
+    return c.json({ error: `Failed to fetch DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /user/:userId/releases/dsp-urls — get all DSP URLs for a user (authenticated)
+app.get("/make-server-79198001/user/:userId/releases/dsp-urls", verifyAuth, async (c) => {
+  try {
+    const authUserId = c.get('userId');
+    const userId = c.req.param('userId');
+
+    // Only allow users to view their own DSP URLs
+    if (authUserId !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    const results = await releaseDSPService.getUserReleaseDSPUrls(userId);
+
+    return c.json({ success: true, data: results });
+  } catch (error) {
+    console.error('Error fetching user DSP URLs:', error);
+    return c.json({ error: `Failed to fetch DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /releases/:releaseId/dsp-urls/deactivate — deactivate DSP URLs for a release
+app.post("/make-server-79198001/releases/:releaseId/dsp-urls/deactivate", verifyAuth, async (c) => {
+  try {
+    const releaseId = c.req.param('releaseId');
+
+    await releaseDSPService.deactivateReleaseDSPUrls(releaseId);
+
+    return c.json({ success: true, message: 'DSP URLs deactivated' });
+  } catch (error) {
+    console.error('Error deactivating DSP URLs:', error);
+    return c.json({ error: `Failed to deactivate DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
 
 Deno.serve(app.fetch);
