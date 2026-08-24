@@ -20,6 +20,7 @@ import * as adminService from "./admin-service.tsx";
 import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
+import * as lyricsService from "./lyrics-service.tsx";
 import { buildPasswordChangeUpdate } from './password-update.ts';
 
 const PAYSTACK_PLAN_PRICING = {
