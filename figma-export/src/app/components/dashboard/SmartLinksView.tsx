@@ -387,7 +387,7 @@ export function SmartLinksView() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{link.title}</p>
-                    <p className="text-xs text-[#B3B3B3] truncate">amtdistro.link/{link.slug}</p>
+                    <p className="text-xs text-[#B3B3B3] truncate">gwmusic.com.ng/s/{link.slug}</p>
                   </div>
                 </div>
 
@@ -491,7 +491,7 @@ export function SmartLinksView() {
                 <Label className="text-[#B3B3B3]">Custom Slug *</Label>
                 <div className="flex gap-2 mt-2">
                   <div className="flex-1 relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-sm">amtdistro.link/</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-sm">gwmusic.com.ng/s/</span>
                     <Input
                       placeholder="your-music"
                       value={form.customSlug}

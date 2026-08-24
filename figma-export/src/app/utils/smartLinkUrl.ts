@@ -21,7 +21,7 @@ export function buildSmartLinkPath(slug: string): string {
 }
 
 export function buildSmartLinkUrl(slug: string, origin?: string): string {
-  const baseOrigin = (origin || (typeof window !== 'undefined' ? window.location.origin : 'https://amtdistro.link')).replace(/\/+$/, '');
+  const baseOrigin = (origin || (typeof window !== 'undefined' ? window.location.origin : 'https://gwmusic.com.ng')).replace(/\/+$/, '');
   return `${baseOrigin}${buildSmartLinkPath(slug)}`;
 }
 
