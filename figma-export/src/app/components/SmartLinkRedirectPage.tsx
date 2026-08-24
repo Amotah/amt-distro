@@ -1,77 +1,110 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
-import {
-  createClickEvent,
-  getPreferredPlatform,
-} from '../utils/smartLinkAlgorithms';
-import {
-  loadSmartLinkClickEvents,
-  loadSmartLinks,
-  saveSmartLinkClickEvents,
-  saveSmartLinks,
-  type SmartLinkStorageRecord,
-} from '../utils/smart-links-storage';
 
 interface SmartLinkRedirectPageProps {
   slug: string;
 }
 
-function getFallbackPlatformUrl(link: SmartLinkStorageRecord): string | null {
-  const urls = Object.values(link.platforms).filter(Boolean);
-  return urls.length > 0 ? urls[0] : null;
+interface SmartLinkService {
+  platform: string;
+  url: string;
+}
+
+interface SmartLink {
+  id: string;
+  slug: string;
+  title: string;
+  artistName: string;
+  services: SmartLinkService[];
 }
 
 export function SmartLinkRedirectPage({ slug }: SmartLinkRedirectPageProps) {
   const [status, setStatus] = useState<'loading' | 'redirecting' | 'not-found' | 'invalid'>('loading');
+  const [link, setLink] = useState<SmartLink | null>(null);
+  const [targetUrl, setTargetUrl] = useState<string | null>(null);
 
-  const link = useMemo(() => {
-    const normalizedSlug = slug.toLowerCase();
-    const links = loadSmartLinks();
-    return links.find((entry) => entry.slug.toLowerCase() === normalizedSlug) || null;
+  // Fetch smart link from database on mount
+  useEffect(() => {
+    const fetchSmartLink = async () => {
+      try {
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://vatpvfrbgeatdeypqcrv.supabase.co';
+        const API_URL = `${SUPABASE_URL}/functions/v1/make-server-79198001`;
+        
+        const response = await fetch(`${API_URL}/smart-links/${slug}`, {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+        });
+
+        if (!response.ok) {
+          setStatus('not-found');
+          return;
+        }
+
+        const data = await response.json();
+        setLink(data);
+
+        // Find first available platform URL
+        if (data.services && data.services.length > 0) {
+          const url = data.services[0].url;
+          if (url) {
+            setTargetUrl(url);
+          } else {
+            setStatus('invalid');
+          }
+        } else {
+          setStatus('invalid');
+        }
+
+        // Record view event
+        try {
+          await fetch(`${API_URL}/smart-links/${slug}/events/view`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ timestamp: new Date().toISOString() }),
+          });
+        } catch (err) {
+          console.error('Failed to record view:', err);
+        }
+      } catch (error) {
+        console.error('Error fetching smart link:', error);
+        setStatus('not-found');
+      }
+    };
+
+    fetchSmartLink();
   }, [slug]);
 
-  const targetUrl = useMemo(() => {
-    if (!link) return null;
-
-    const device = createClickEvent(link.id).device;
-    const os = createClickEvent(link.id).os;
-    const preferred = getPreferredPlatform(link.platforms, device, os);
-    return preferred || getFallbackPlatformUrl(link);
-  }, [link]);
-
+  // Auto-redirect when target URL is found
   useEffect(() => {
-    if (!link) {
-      setStatus('not-found');
-      return;
-    }
-
-    if (!targetUrl) {
-      setStatus('invalid');
-      return;
-    }
+    if (!targetUrl) return;
+    if (status !== 'loading') return;
 
     setStatus('redirecting');
 
-    const clickEvent = createClickEvent(link.id);
-    const existingEvents = loadSmartLinkClickEvents();
-    existingEvents.unshift({
-      ...clickEvent,
-      id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      date: new Date(clickEvent.timestamp).toISOString().slice(0, 10),
-      linkSlug: link.slug,
-    });
-    saveSmartLinkClickEvents(existingEvents);
+    // Record click event
+    const recordClick = async () => {
+      try {
+        const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL || 'https://vatpvfrbgeatdeypqcrv.supabase.co';
+        const API_URL = `${SUPABASE_URL}/functions/v1/make-server-79198001`;
+        
+        const platformKey = link?.services[0]?.platform || 'unknown';
+        await fetch(`${API_URL}/smart-links/${slug}/events/click`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platformKey,
+            timestamp: new Date().toISOString(),
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to record click:', err);
+      }
+    };
 
-    const updatedLinks = loadSmartLinks().map((entry) => (
-      entry.id === link.id
-        ? { ...entry, clicks: (entry.clicks || 0) + 1 }
-        : entry
-    ));
-    saveSmartLinks(updatedLinks);
-
+    recordClick();
     window.location.replace(targetUrl);
-  }, [link, targetUrl]);
+  }, [targetUrl, slug, link, status]);
 
   if (status === 'redirecting' || status === 'loading') {
     return (

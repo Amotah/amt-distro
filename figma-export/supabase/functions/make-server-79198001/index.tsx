@@ -23,6 +23,7 @@ import * as accountingService from "./accounting-service.tsx";
 import * as smartLinksService from "./smart-links-service.tsx";
 import * as listenerService from "./listener-service.tsx";
 import * as releaseDSPService from "./release-dsp-service.tsx";
+import { buildPasswordChangeUpdate } from './password-update.ts';
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -3728,9 +3729,28 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
       return c.json({ error: 'User not found' }, 404);
     }
 
-    const updatedUser = await userService.updateUser(user.id, body);
+    const { password, metadataOverrides } = buildPasswordChangeUpdate({
+      password: body.password,
+      mustChangePassword: body.mustChangePassword,
+      temporaryPassword: body.temporaryPassword,
+    });
 
-    // Sync Supabase Auth metadata so the role change is reflected on next login
+    const profileUpdates = { ...body };
+    delete profileUpdates.password;
+    delete profileUpdates.defaultPassword;
+
+    if (password) {
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(user.userId, {
+        password,
+      });
+
+      if (authUpdateError) {
+        throw authUpdateError;
+      }
+    }
+
+    const updatedUser = await userService.updateUser(user.id, profileUpdates);
+
     if (updatedUser) {
       await syncAuthUserMetadata(user.userId, {
         email: updatedUser.email,
@@ -3740,6 +3760,10 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
         labelName: updatedUser.role === 'partner' ? updatedUser.labelName : undefined,
         role: updatedUser.role,
         subscriptionTier: updatedUser.subscriptionTier,
+        ...(Object.keys(metadataOverrides).length > 0 ? {
+          mustChangePassword: metadataOverrides.mustChangePassword ?? undefined,
+          temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
+        } : {}),
       });
     }
 

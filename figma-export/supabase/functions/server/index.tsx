@@ -20,6 +20,7 @@ import * as adminService from "./admin-service.tsx";
 import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
+import { buildPasswordChangeUpdate } from './password-update.ts';
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -2779,7 +2780,43 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
       return c.json({ error: 'User not found' }, 404);
     }
 
-    const updatedUser = await userService.updateUser(user.id, body);
+    const { password, metadataOverrides } = buildPasswordChangeUpdate({
+      password: body.password,
+      mustChangePassword: body.mustChangePassword,
+      temporaryPassword: body.temporaryPassword,
+    });
+
+    const profileUpdates = { ...body };
+    delete profileUpdates.password;
+    delete profileUpdates.defaultPassword;
+
+    if (password) {
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(user.userId, {
+        password,
+      });
+
+      if (authUpdateError) {
+        throw authUpdateError;
+      }
+    }
+
+    const updatedUser = await userService.updateUser(user.id, profileUpdates);
+
+    if (updatedUser) {
+      await syncAuthUserMetadata(user.userId, {
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        artistName: updatedUser.role === 'artist' ? updatedUser.artistName : undefined,
+        labelName: updatedUser.role === 'partner' ? updatedUser.labelName : undefined,
+        role: updatedUser.role,
+        subscriptionTier: updatedUser.subscriptionTier,
+        ...(Object.keys(metadataOverrides).length > 0 ? {
+          mustChangePassword: metadataOverrides.mustChangePassword ?? undefined,
+          temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
+        } : {}),
+      });
+    }
 
     await adminService.logAdminAction(
       adminUserId,
