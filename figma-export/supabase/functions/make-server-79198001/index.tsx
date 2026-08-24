@@ -2507,6 +2507,11 @@ async function verifyAdmin(c: any, next: any) {
     }
   }
 
+  // Block deactivated admin accounts immediately
+  if ((admin as any).status === 'inactive') {
+    return c.json({ error: 'Admin account is deactivated' }, 403);
+  }
+
   c.set('adminUser', admin);
   await adminService.updateAdminActivity(userId);
   await next();
@@ -2711,6 +2716,9 @@ app.put("/make-server-79198001/admin/users/:userId/role", verifyAuth, verifyAdmi
     if (!adminUser) {
       return c.json({ error: 'Admin user not found' }, 404);
     }
+
+    // Sync new admin role into Supabase Auth metadata so it takes effect immediately
+    await syncAuthUserMetadata(targetUserId, { role: 'admin' }).catch(console.error);
 
     return c.json({ adminUser });
   } catch (error) {
@@ -3765,6 +3773,12 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
           temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
         } : {}),
       });
+
+      // Suspend or reinstate in Supabase Auth immediately when isVerified changes
+      if (typeof profileUpdates.isVerified === 'boolean') {
+        const banDuration = profileUpdates.isVerified ? 'none' : '876000h';
+        await supabase.auth.admin.updateUserById(user.userId, { ban_duration: banDuration }).catch(console.error);
+      }
     }
 
     await adminService.logAdminAction(
@@ -5083,6 +5097,9 @@ app.put('/make-server-79198001/admin/security/admins/:adminId/deactivate', verif
     admin.updatedAt = new Date().toISOString();
     await kv.set(`admin:${adminId}`, admin);
 
+    // Ban in Supabase Auth so the existing session is rejected immediately
+    await supabase.auth.admin.updateUserById(admin.userId, { ban_duration: '876000h' }).catch(console.error);
+
     await adminService.logAdminAction(actorId, 'deactivate', 'admin', adminId, { userId: admin.userId });
     return c.json({ admin });
   } catch (err) {
@@ -5103,6 +5120,9 @@ app.put('/make-server-79198001/admin/security/admins/:adminId/activate', verifyA
     delete admin.deactivatedAt;
     delete admin.deactivatedBy;
     await kv.set(`admin:${adminId}`, admin);
+
+    // Lift the Auth ban so the admin can sign in again immediately
+    await supabase.auth.admin.updateUserById(admin.userId, { ban_duration: 'none' }).catch(console.error);
 
     await adminService.logAdminAction(actorId, 'activate', 'admin', adminId, { userId: admin.userId });
     return c.json({ admin });
@@ -7388,6 +7408,375 @@ app.post("/make-server-79198001/releases/:releaseId/dsp-urls/deactivate", verify
   } catch (error) {
     console.error('Error deactivating DSP URLs:', error);
     return c.json({ error: `Failed to deactivate DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ==================== SMART LINKS ROUTES ====================
+
+// GET /smart-links/:slug – Fetch public smart link by slug (NO AUTH REQUIRED)
+app.get("/make-server-79198001/smart-links/:slug", async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    if (!slug || typeof slug !== 'string' || slug.length === 0) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
+    }
+
+    // Query smart_links table for the slug
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('*')
+      .eq('slug', slug.toLowerCase())
+      .eq('is_public', true)
+      .eq('status', 'active')
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    // Fetch associated services (platform URLs)
+    const { data: services = [] } = await supabase
+      .from('smart_link_services')
+      .select('*')
+      .eq('smart_link_id', link.id)
+      .eq('enabled', true)
+      .order('display_order', { ascending: true });
+
+    // Fetch settings
+    const { data: settings } = await supabase
+      .from('smart_link_settings')
+      .select('*')
+      .eq('smart_link_id', link.id)
+      .single();
+
+    // Transform to frontend format
+    const smartLink = {
+      id: link.id,
+      slug: link.slug,
+      title: link.title,
+      artistName: link.artist_name,
+      releaseId: link.release_id,
+      artworkUrl: link.artwork_url,
+      services: services.map((s: any) => ({
+        id: s.id,
+        platform: s.platform_key,
+        platformName: s.platform_name,
+        url: s.platform_url,
+        displayOrder: s.display_order,
+        clickCount: s.click_count,
+      })),
+      settings: settings ? {
+        theme: settings.theme,
+        backgroundColor: settings.background_color,
+        buttonStyle: settings.button_style,
+        showArtistBio: settings.show_artist_bio,
+        showCoverArt: settings.show_cover_art,
+      } : null,
+      viewCount: link.total_views,
+      clickCount: link.total_clicks,
+    };
+
+    return c.json(smartLink);
+  } catch (error) {
+    console.error('Error fetching smart link:', error);
+    return c.json({ error: `Failed to fetch smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /smart-links/:slug/events/view – Record view event (NO AUTH)
+app.post("/make-server-79198001/smart-links/:slug/events/view", async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const body = await c.req.json().catch(() => ({}));
+
+    if (!slug) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
+    }
+
+    // Get the smart link
+    const { data: link } = await supabase
+      .from('smart_links')
+      .select('id, total_views')
+      .eq('slug', slug.toLowerCase())
+      .single();
+
+    if (!link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    // Increment view count
+    const { error: updateError } = await supabase
+      .from('smart_links')
+      .update({ 
+        total_views: (link.total_views || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', link.id);
+
+    if (updateError) throw updateError;
+
+    return c.json({ success: true, message: 'View recorded' });
+  } catch (error) {
+    console.error('Error recording view:', error);
+    return c.json({ error: `Failed to record view: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /smart-links/:slug/events/click – Record click event (NO AUTH)
+app.post("/make-server-79198001/smart-links/:slug/events/click", async (c) => {
+  try {
+    const slug = c.req.param('slug');
+    const body = await c.req.json().catch(() => ({}));
+    const platformKey = typeof body.platformKey === 'string' ? body.platformKey : null;
+
+    if (!slug) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
+    }
+
+    // Get the smart link
+    const { data: link } = await supabase
+      .from('smart_links')
+      .select('id, total_clicks')
+      .eq('slug', slug.toLowerCase())
+      .single();
+
+    if (!link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    // Increment smart link total clicks
+    await supabase
+      .from('smart_links')
+      .update({ 
+        total_clicks: (link.total_clicks || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', link.id);
+
+    // Increment platform-specific click count if platform provided
+    if (platformKey) {
+      const { data: service } = await supabase
+        .from('smart_link_services')
+        .select('id, click_count')
+        .eq('smart_link_id', link.id)
+        .eq('platform_key', platformKey)
+        .single();
+
+      if (service) {
+        await supabase
+          .from('smart_link_services')
+          .update({ 
+            click_count: (service.click_count || 0) + 1,
+            last_clicked_at: new Date().toISOString()
+          })
+          .eq('id', service.id);
+      }
+    }
+
+    return c.json({ success: true, message: 'Click recorded' });
+  } catch (error) {
+    console.error('Error recording click:', error);
+    return c.json({ error: `Failed to record click: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /smart-links – Get user's smart links (AUTH REQUIRED)
+app.get("/make-server-79198001/smart-links", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+
+    const { data: links = [], error } = await supabase
+      .from('smart_links')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return c.json({ success: true, data: links });
+  } catch (error) {
+    console.error('Error fetching user smart links:', error);
+    return c.json({ error: `Failed to fetch smart links: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /smart-links – Create new smart link (AUTH REQUIRED)
+app.post("/make-server-79198001/smart-links", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+
+    const {
+      title,
+      artistName,
+      slug,
+      releaseId,
+      services = [],
+      settings = {},
+    } = body;
+
+    if (!title || !artistName || !slug) {
+      return c.json({ error: 'Title, artist name, and slug are required' }, 400);
+    }
+
+    // Check if slug already exists
+    const { data: existing } = await supabase
+      .from('smart_links')
+      .select('id')
+      .eq('slug', slug.toLowerCase())
+      .single();
+
+    if (existing) {
+      return c.json({ error: 'This slug is already taken' }, 400);
+    }
+
+    // Create smart link
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .insert({
+        user_id: userId,
+        title,
+        artist_name: artistName,
+        slug: slug.toLowerCase(),
+        release_id: releaseId || null,
+        is_public: true,
+        status: 'active',
+        total_views: 0,
+        total_clicks: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (linkError || !link) throw linkError;
+
+    // Insert services
+    if (services.length > 0) {
+      const serviceRecords = services.map((s: any) => ({
+        smart_link_id: link.id,
+        platform_key: s.platformKey || s.platform,
+        platform_name: s.platformName || s.platform,
+        platform_url: s.url,
+        display_order: s.displayOrder || 0,
+        enabled: true,
+      }));
+
+      await supabase.from('smart_link_services').insert(serviceRecords);
+    }
+
+    // Insert settings
+    if (Object.keys(settings).length > 0) {
+      await supabase
+        .from('smart_link_settings')
+        .insert({
+          smart_link_id: link.id,
+          theme: settings.theme || 'light',
+          background_color: settings.backgroundColor,
+          button_style: settings.buttonStyle || 'pill',
+          show_artist_bio: settings.showArtistBio !== false,
+          show_cover_art: settings.showCoverArt !== false,
+        });
+    }
+
+    return c.json({ success: true, data: link }, 201);
+  } catch (error) {
+    console.error('Error creating smart link:', error);
+    return c.json({ error: `Failed to create smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// PUT /smart-links/:id – Update smart link (AUTH REQUIRED)
+app.put("/make-server-79198001/smart-links/:id", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const linkId = c.req.param('id');
+    const body = await c.req.json();
+
+    // Verify ownership
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('user_id')
+      .eq('id', linkId)
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    if (link.user_id !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Update link
+    const { data: updated, error: updateError } = await supabase
+      .from('smart_links')
+      .update({
+        title: body.title,
+        artist_name: body.artistName,
+        artwork_url: body.artworkUrl,
+        status: body.status,
+        is_public: body.isPublic !== false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', linkId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating smart link:', error);
+    return c.json({ error: `Failed to update smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// DELETE /smart-links/:id – Delete smart link (AUTH REQUIRED)
+app.delete("/make-server-79198001/smart-links/:id", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const linkId = c.req.param('id');
+
+    // Verify ownership
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('user_id')
+      .eq('id', linkId)
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    if (link.user_id !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Delete services
+    await supabase
+      .from('smart_link_services')
+      .delete()
+      .eq('smart_link_id', linkId);
+
+    // Delete settings
+    await supabase
+      .from('smart_link_settings')
+      .delete()
+      .eq('smart_link_id', linkId);
+
+    // Delete link
+    const { error: deleteError } = await supabase
+      .from('smart_links')
+      .delete()
+      .eq('id', linkId);
+
+    if (deleteError) throw deleteError;
+
+    return c.json({ success: true, message: 'Smart link deleted' });
+  } catch (error) {
+    console.error('Error deleting smart link:', error);
+    return c.json({ error: `Failed to delete smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 

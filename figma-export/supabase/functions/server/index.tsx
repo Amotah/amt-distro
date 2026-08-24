@@ -2334,6 +2334,11 @@ async function verifyAdmin(c: any, next: any) {
     }
   }
 
+  // Block deactivated admin accounts immediately
+  if ((admin as any).status === 'inactive') {
+    return c.json({ error: 'Admin account is deactivated' }, 403);
+  }
+
   c.set('adminUser', admin);
   await adminService.updateAdminActivity(userId);
   await next();
@@ -2538,6 +2543,9 @@ app.put("/make-server-79198001/admin/users/:userId/role", verifyAuth, verifyAdmi
     if (!adminUser) {
       return c.json({ error: 'Admin user not found' }, 404);
     }
+
+    // Sync updated admin role into Supabase Auth metadata immediately
+    await syncAuthUserMetadata(targetUserId, { role: 'admin' }).catch(console.error);
 
     return c.json({ adminUser });
   } catch (error) {
@@ -2816,6 +2824,12 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
           temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
         } : {}),
       });
+
+      // Suspend or reinstate in Supabase Auth immediately when isVerified changes
+      if (typeof profileUpdates.isVerified === 'boolean') {
+        const banDuration = profileUpdates.isVerified ? 'none' : '876000h';
+        await supabase.auth.admin.updateUserById(user.userId, { ban_duration: banDuration }).catch(console.error);
+      }
     }
 
     await adminService.logAdminAction(
