@@ -22,6 +22,7 @@ const UnmatchedRecords = lazy(() => import('./components/admin/UnmatchedRecords'
 const AnalyticsUpload = lazy(() => import('./components/admin/AnalyticsUpload'));
 const AdminContractsView = lazy(() => import('./components/contracts/AdminContractsView').then((module) => ({ default: module.AdminContractsView })));
 const AdminPromotions = lazy(() => import('./components/admin/AdminPromotions').then((module) => ({ default: module.AdminPromotions })));
+const AdminLyrics = lazy(() => import('./components/admin/AdminLyrics').then((module) => ({ default: module.AdminLyrics })));
 const AdminPayments = lazy(() => import('./components/admin/AdminPayments').then((module) => ({ default: module.AdminPayments })));
 const AdminSubscriptions = lazy(() => import('./components/admin/AdminSubscriptions').then((module) => ({ default: module.AdminSubscriptions })));
 const AdminCoupons = lazy(() => import('./components/admin/AdminCoupons').then((module) => ({ default: module.AdminCoupons })));
@@ -99,6 +100,10 @@ export const createAdminRouter = () => {
         {
           path: 'releases',
           element: withSuspense(<ReleaseManagement />),
+        },
+        {
+          path: 'lyrics',
+          element: withSuspense(<AdminLyrics />),
         },
         {
           path: 'track-upload',

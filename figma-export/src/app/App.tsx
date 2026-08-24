@@ -45,8 +45,12 @@ const ForgotPassword = lazy(() => import('./components/ForgotPassword').then((mo
 const ResetPassword = lazy(() => import('./components/ResetPassword').then((module) => ({ default: module.ResetPassword })));
 const ListenerApp = lazy(() => import('./components/ListenerApp').then((module) => ({ default: module.ListenerApp })));
 const SmartLinkRedirectPage = lazy(() => import('./components/SmartLinkRedirectPage').then((module) => ({ default: module.SmartLinkRedirectPage })));
+const LyricsHomePage = lazy(() => import('./components/LyricsExperience').then((module) => ({ default: module.LyricsHomePage })));
+const LyricsSongPage = lazy(() => import('./components/LyricsExperience').then((module) => ({ default: module.LyricsSongPage })));
+const LyricsArtistPage = lazy(() => import('./components/LyricsExperience').then((module) => ({ default: module.LyricsArtistPage })));
+const LyricsAlbumPage = lazy(() => import('./components/LyricsExperience').then((module) => ({ default: module.LyricsAlbumPage })));
 
-type View = 'landing' | 'get-started' | 'login' | 'forgot-password' | 'reset-password' | 'payment' | 'payment-success' | 'payment-failed' | 'payment-rejected' | 'who-we-are' | 'our-partners' | 'ceo-message' | 'technology' | 'blog' | 'marketing-solutions' | 'video-distribution' | 'rights-management' | 'royalty-advances' | 'promotion' | 'pricing' | 'listener-app' | 'fix-admin' | 'free-plan-details' | 'paid-plan-details' | 'partner-plan-details' | 'terms-conditions' | 'privacy-policy' | 'cookies-policy' | 'contact' | 'careers';
+type View = 'landing' | 'get-started' | 'login' | 'forgot-password' | 'reset-password' | 'payment' | 'payment-success' | 'payment-failed' | 'payment-rejected' | 'who-we-are' | 'our-partners' | 'ceo-message' | 'technology' | 'blog' | 'marketing-solutions' | 'video-distribution' | 'rights-management' | 'royalty-advances' | 'promotion' | 'pricing' | 'listener-app' | 'lyrics' | 'fix-admin' | 'free-plan-details' | 'paid-plan-details' | 'partner-plan-details' | 'terms-conditions' | 'privacy-policy' | 'cookies-policy' | 'contact' | 'careers';
 
 const PUBLIC_VIEW_PATHS: Record<View, string> = {
   landing: '/',
@@ -69,6 +73,7 @@ const PUBLIC_VIEW_PATHS: Record<View, string> = {
   promotion: '/promotion',
   pricing: '/pricing',
   'listener-app': '/listen',
+  lyrics: '/lyrics',
   blog: '/blog',
   'fix-admin': '/fix-admin',
   'free-plan-details': '/plans/free',
@@ -99,8 +104,43 @@ const LEGACY_HASH_VIEW_MAP: Record<string, View> = {
 
 function getViewFromPathname(pathname: string): View {
   const normalizedPath = pathname.toLowerCase().replace(/\/+$/, '') || '/';
+
+  if (
+    normalizedPath === '/lyrics'
+    || normalizedPath.startsWith('/lyrics/')
+    || normalizedPath.startsWith('/artists/')
+    || normalizedPath.startsWith('/album/')
+  ) {
+    return 'lyrics';
+  }
+
   const matchedEntry = (Object.entries(PUBLIC_VIEW_PATHS) as Array<[View, string]>).find(([, path]) => path === normalizedPath);
   return matchedEntry?.[0] ?? 'landing';
+}
+
+function getLyricsRouteParams(pathname: string) {
+  const normalizedPath = pathname.replace(/\/+$/, '') || '/';
+
+  if (normalizedPath === '/lyrics') {
+    return { kind: 'home' as const };
+  }
+
+  const songMatch = normalizedPath.match(/^\/lyrics\/([^/]+)\/([^/]+)$/i);
+  if (songMatch) {
+    return { kind: 'song' as const, artistSlug: decodeURIComponent(songMatch[1]), songSlug: decodeURIComponent(songMatch[2]) };
+  }
+
+  const artistMatch = normalizedPath.match(/^\/artists\/([^/]+)\/lyrics$/i);
+  if (artistMatch) {
+    return { kind: 'artist' as const, artistSlug: decodeURIComponent(artistMatch[1]) };
+  }
+
+  const albumMatch = normalizedPath.match(/^\/album\/([^/]+)\/lyrics$/i);
+  if (albumMatch) {
+    return { kind: 'album' as const, albumSlug: decodeURIComponent(albumMatch[1]) };
+  }
+
+  return { kind: 'home' as const };
 }
 
 function scrollToHashTarget(hash: string) {
@@ -731,6 +771,19 @@ export default function App() {
         {currentView === 'promotion' && withPublicSuspense(<Promotion />)}
         {currentView === 'pricing' && withPublicSuspense(<PricingPage onSelectPlan={handleSelectPublicPlan} />)}
         {currentView === 'listener-app' && withPublicSuspense(<ListenerApp />)}
+        {currentView === 'lyrics' && (() => {
+          const lyricsRoute = getLyricsRouteParams(window.location.pathname);
+          if (lyricsRoute.kind === 'song') {
+            return withPublicSuspense(<LyricsSongPage artistSlug={lyricsRoute.artistSlug} songSlug={lyricsRoute.songSlug} />);
+          }
+          if (lyricsRoute.kind === 'artist') {
+            return withPublicSuspense(<LyricsArtistPage artistSlug={lyricsRoute.artistSlug} />);
+          }
+          if (lyricsRoute.kind === 'album') {
+            return withPublicSuspense(<LyricsAlbumPage albumSlug={lyricsRoute.albumSlug} />);
+          }
+          return withPublicSuspense(<LyricsHomePage />);
+        })()}
         {currentView === 'fix-admin' && withPublicSuspense(<FixAdmin />)}
         {currentView === 'free-plan-details' && withPublicSuspense(<FreePlanDetails />)}
         {currentView === 'paid-plan-details' && withPublicSuspense(<PaidPlanDetails />)}

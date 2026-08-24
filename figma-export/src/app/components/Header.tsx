@@ -119,6 +119,7 @@ export function Header({ onNavigate }: HeaderProps) {
 
             <button onClick={() => handleNavClick('our-partners')} className={navLinkClass}>{t('nav.partners', 'Partners')}</button>
             <button onClick={() => handleNavClick('listener-app')} className={navLinkClass}>Listen</button>
+            <button onClick={() => handleNavClick('lyrics')} className={navLinkClass}>Lyrics</button>
             <button onClick={() => handleNavClick('promotion')} className={navLinkClass}>{t('nav.promotion', 'Promotion')}</button>
             <a href="/#pricing" className={navLinkClass}>{t('nav.pricing', 'Pricing')}</a>
             <a href="/#faq" className={navLinkClass}>{t('nav.faq', 'FAQ')}</a>
@@ -232,6 +233,12 @@ export function Header({ onNavigate }: HeaderProps) {
                 onClick={() => { handleNavClick('listener-app'); }}
               >
                 Listen
+              </button>
+              <button
+                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
+                onClick={() => { handleNavClick('lyrics'); }}
+              >
+                Lyrics
               </button>
               <button
                 className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
