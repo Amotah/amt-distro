@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '/utils/supabase/client';
 import * as adminApi from '../utils/admin-api';
 import type { AdminUser } from '../utils/admin-api';
-import { initializeDefaultAdminAccount } from '../utils/admin-bootstrap';
 
 interface AdminContextType {
   adminUser: AdminUser | null;
@@ -27,32 +26,11 @@ function buildAdminEmailCandidates(emailOrUsername: string) {
   candidates.add(input);
 
   if (!input.includes('@')) {
-    if (input === 'admin') {
-      candidates.add('admin@amtdistro.com');
-      candidates.add('admin@amtdistro.com.ng');
-    } else {
-      candidates.add(`${input}@amtdistro.com`);
-      candidates.add(`${input}@amtdistro.com.ng`);
-    }
+    candidates.add(`${input}@amtdistro.com`);
+    candidates.add(`${input}@amtdistro.com.ng`);
   }
 
   return Array.from(candidates);
-}
-
-function isDefaultAdminAlias(value: string) {
-  const normalized = value.trim().toLowerCase();
-  return normalized === 'admin' || normalized === 'admin@amtdistro.com' || normalized === 'admin@amtdistro.com.ng';
-}
-
-// Temporary fallback for default admin credentials (hardcoded for testing)
-const DEFAULT_ADMIN_USERNAME = 'admin';
-const DEFAULT_ADMIN_PASSWORD = 'admin';
-const DEFAULT_ADMIN_EMAIL = 'admin@amtdistro.com';
-
-const DEFAULT_SUPERADMIN_PERMISSIONS = ['users.view', 'users.create', 'users.edit', 'users.delete', 'users.ban', 'users.verify', 'artists.view', 'artists.edit', 'artists.delete', 'artists.verify', 'releases.view', 'releases.edit', 'releases.delete', 'releases.approve', 'releases.takedown', 'distributions.view', 'distributions.retry', 'distributions.cancel', 'royalties.view', 'royalties.edit', 'royalties.approve', 'royalties.dispute', 'royalties.manage', 'payments.view', 'payments.approve', 'payments.cancel', 'payments.refund', 'reports.view', 'reports.upload', 'fraud.view', 'fraud.investigate', 'fraud.resolve', 'fraud.flag_users', 'admins.view', 'admins.create', 'admins.edit', 'admins.delete', 'system.settings', 'system.logs', 'system.analytics'];
-
-function isDefaultAdminCredentials(emailOrUsername: string, password: string) {
-  return isDefaultAdminAlias(emailOrUsername) && password === DEFAULT_ADMIN_PASSWORD;
 }
 
 function persistAdminSession(adminUser: AdminUser, accessToken?: string) {
@@ -73,19 +51,6 @@ function clearAdminSession() {
   sessionStorage.removeItem('admin_permissions');
   sessionStorage.removeItem('admin_department');
   sessionStorage.removeItem('mustChangePassword');
-}
-
-function buildFallbackSuperAdmin(id: string): AdminUser {
-  return {
-    id,
-    userId: id,
-    role: 'superadmin',
-    permissions: DEFAULT_SUPERADMIN_PERMISSIONS,
-    department: 'Admin',
-    createdBy: 'system',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  };
 }
 
 function getStoredAdminUser(): AdminUser | null {
@@ -175,79 +140,39 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true);
     
     try {
-      const signInWithCandidates = async () => {
-        const emailCandidates = buildAdminEmailCandidates(emailOrUsername);
-        let sessionData: { access_token: string; user: { id: string; user_metadata?: { mustChangePassword?: boolean } } } | null = null;
-        let lastAuthError: { message?: string } | null = null;
+      const emailCandidates = buildAdminEmailCandidates(emailOrUsername);
+      let sessionData: { access_token: string; user: { id: string; user_metadata?: { mustChangePassword?: boolean } } } | null = null;
+      let lastAuthError: { message?: string } | null = null;
 
-        for (const email of emailCandidates) {
-          const { data, error } = await supabase.auth.signInWithPassword({
-            email,
-            password,
-          });
+      // Try all email candidates
+      for (const email of emailCandidates) {
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        });
 
-          if (error) {
-            lastAuthError = error;
+        if (error) {
+          lastAuthError = error;
 
-            const message = (error.message || '').toLowerCase();
-            // Keep trying other derived email candidates only for credential-style failures.
-            if (message.includes('invalid login credentials') || message.includes('email or password')) {
-              continue;
-            }
-
-            // Surface network/config/auth service issues immediately.
-            throw new Error(error.message || 'Unable to reach authentication service.');
-          }
-
-          if (!data.session) {
+          const message = (error.message || '').toLowerCase();
+          // Keep trying other derived email candidates only for credential-style failures.
+          if (message.includes('invalid login credentials') || message.includes('email or password')) {
             continue;
           }
 
-          sessionData = {
-            access_token: data.session.access_token,
-            user: data.user,
-          };
-          break;
+          // Surface network/config/auth service issues immediately.
+          throw new Error(error.message || 'Unable to reach authentication service.');
         }
 
-        return { sessionData, lastAuthError };
-      };
-
-      let { sessionData, lastAuthError } = await signInWithCandidates();
-
-      // If default admin login fails, try to initialize via backend endpoint
-      if (!sessionData && isDefaultAdminAlias(emailOrUsername)) {
-        try {
-          console.log('Default admin login failed, attempting initialization...');
-          const initResult = await initializeDefaultAdminAccount();
-          console.log('Init result:', initResult);
-          
-          if (initResult.success) {
-            // Retry sign in after initialization
-            const retry = await signInWithCandidates();
-            sessionData = retry.sessionData;
-            lastAuthError = retry.lastAuthError;
-          }
-        } catch (initError) {
-          console.warn('Initialization failed:', initError);
-          // Continue to credential error handling below
+        if (!data.session) {
+          continue;
         }
-      }
 
-      // Fallback: Allow default admin login without Supabase if credentials match hardcoded values
-      // This is a temporary workaround for development/testing
-      if (!sessionData && isDefaultAdminCredentials(emailOrUsername, password)) {
-        console.log('Using fallback admin login - Supabase auth unavailable');
-        // Create a temporary session object with hardcoded admin data
         sessionData = {
-          access_token: 'fallback-admin-token-' + Date.now(),
-          user: {
-            id: 'admin-' + Date.now(),
-            user_metadata: {
-              mustChangePassword: false,
-            },
-          },
+          access_token: data.session.access_token,
+          user: data.user,
         };
+        break;
       }
 
       if (!sessionData) {
@@ -263,15 +188,12 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
         sessionStorage.removeItem('mustChangePassword');
       }
 
-      // Store token (fallback tokens start with 'fallback-')
-      const isFallbackToken = sessionData.access_token.startsWith('fallback-');
+      // Store token
       adminApi.setAdminToken(sessionData.access_token);
 
       try {
-        const currentAdmin = isFallbackToken
-          ? buildFallbackSuperAdmin(sessionData.user.id)
-          : await adminApi.getCurrentAdminUser();
-
+        // Verify admin status with the server - this is the ONLY way to get admin access
+        const currentAdmin = await adminApi.getCurrentAdminUser();
         setAdminUser(currentAdmin);
         persistAdminSession(currentAdmin, sessionData.access_token);
       } catch (error) {
