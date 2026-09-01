@@ -1,10 +1,11 @@
 import { Suspense, lazy, useState, useEffect } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { NotFound } from './components/NotFound';
 import { RouteTransitionLoader } from './components/RouteTransitionLoader';
 import { LabelDashboardLayout } from './components/label-dashboard/LabelDashboardLayout';
 import { hasActivePartnerSubscription } from './utils/subscription-utils';
 import { getCurrentUserProfile } from './utils/user-api';
+import { supabase } from '../../utils/supabase/client';
 
 const LabelDashboardHome = lazy(() => import('./components/label-dashboard/LabelDashboardHome').then((module) => ({ default: module.LabelDashboardHome })));
 const AllArtists = lazy(() => import('./components/label-dashboard/AllArtists').then((module) => ({ default: module.AllArtists })));
@@ -43,7 +44,70 @@ function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
 }
 
+// SECURITY FIX: Add authentication check for /label-dashboard route
 function ProtectedLabelDashboardRoute({ children }: { children: React.ReactNode }) {
+  const [authState, setAuthState] = useState<{
+    isLoading: boolean;
+    isAuthenticated: boolean;
+    userRole: string | null;
+  }>({ isLoading: true, isAuthenticated: false, userRole: null });
+  const location = useLocation();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          setAuthState({
+            isLoading: false,
+            isAuthenticated: false,
+            userRole: null,
+          });
+          return;
+        }
+
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (profileError || !profileData) {
+          setAuthState({
+            isLoading: false,
+            isAuthenticated: true,
+            userRole: null,
+          });
+          return;
+        }
+
+        setAuthState({
+          isLoading: false,
+          isAuthenticated: true,
+          userRole: profileData.role,
+        });
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        setAuthState({
+          isLoading: false,
+          isAuthenticated: false,
+          userRole: null,
+        });
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  if (authState.isLoading) {
+    return null;
+  }
+
+  if (!authState.isAuthenticated) {
+    return <Navigate to="/#login" replace state={{ from: location }} />;
+  }
+
   const mustChange = sessionStorage.getItem('mustChangePassword') === 'true';
   if (mustChange) {
     return <Navigate to="/label-dashboard/change-password" replace />;

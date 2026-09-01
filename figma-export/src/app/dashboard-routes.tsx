@@ -1,8 +1,9 @@
-import { Suspense, lazy } from 'react';
-import { createBrowserRouter, Navigate } from 'react-router';
+import { Suspense, lazy, useEffect, useState } from 'react';
+import { createBrowserRouter, Navigate, useLocation } from 'react-router';
 import { NotFound } from './components/NotFound';
 import { RouteTransitionLoader } from './components/RouteTransitionLoader';
 import { DashboardLayout } from './components/dashboard/DashboardLayout';
+import { supabase } from '../../utils/supabase/client';
 const DashboardHome = lazy(() => import('./components/dashboard/DashboardHome').then((module) => ({ default: module.DashboardHome })));
 const UploadRelease = lazy(() => import('./components/dashboard/UploadRelease').then((module) => ({ default: module.UploadRelease })));
 const AnalyticsView = lazy(() => import('./components/dashboard/AnalyticsView').then((module) => ({ default: module.AnalyticsView })));
@@ -36,7 +37,76 @@ function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
 }
 
+// SECURITY FIX: Add authentication check for /dashboard route
+// Prevents unauthenticated users from accessing the dashboard
 function ProtectedDashboardRoute({ children }: { children: React.ReactNode }) {
+  const [authState, setAuthState] = useState<{
+    isLoading: boolean;
+    isAuthenticated: boolean;
+    userRole: string | null;
+  }>({ isLoading: true, isAuthenticated: false, userRole: null });
+  const location = useLocation();
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        // SECURITY FIX: Check Supabase session (source of truth)
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          setAuthState({
+            isLoading: false,
+            isAuthenticated: false,
+            userRole: null,
+          });
+          return;
+        }
+
+        // User has valid Supabase session
+        // Now check their role in profiles table
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('user_id', session.user.id)
+          .single();
+
+        if (profileError || !profileData) {
+          setAuthState({
+            isLoading: false,
+            isAuthenticated: true,
+            userRole: null,
+          });
+          return;
+        }
+
+        setAuthState({
+          isLoading: false,
+          isAuthenticated: true,
+          userRole: profileData.role,
+        });
+      } catch (error) {
+        console.error('Auth check failed:', error);
+        setAuthState({
+          isLoading: false,
+          isAuthenticated: false,
+          userRole: null,
+        });
+      }
+    };
+
+    checkAuth();
+  }, []);
+
+  // SECURITY: During auth check, render NOTHING
+  if (authState.isLoading) {
+    return null;
+  }
+
+  // SECURITY: Redirect to login if not authenticated
+  if (!authState.isAuthenticated) {
+    return <Navigate to="/#login" replace state={{ from: location }} />;
+  }
+
   const mustChange = sessionStorage.getItem('mustChangePassword') === 'true';
   if (mustChange) {
     return <Navigate to="/dashboard/change-password" replace />;
