@@ -118,7 +118,6 @@ export function Header({ onNavigate }: HeaderProps) {
             </div>
 
             <button onClick={() => handleNavClick('our-partners')} className={navLinkClass}>{t('nav.partners', 'Partners')}</button>
-            <button onClick={() => handleNavClick('listener-app')} className={navLinkClass}>Listen</button>
             <button onClick={() => handleNavClick('lyrics')} className={navLinkClass}>Lyrics</button>
             <button onClick={() => handleNavClick('promotion')} className={navLinkClass}>{t('nav.promotion', 'Promotion')}</button>
             <a href="/#pricing" className={navLinkClass}>{t('nav.pricing', 'Pricing')}</a>
@@ -128,19 +127,6 @@ export function Header({ onNavigate }: HeaderProps) {
 
           {/* ── Right: Language + Auth ──────────────────────────────────── */}
           <div className="premium-header__auth hidden lg:flex items-center gap-2 xl:gap-3">
-            <label className="sr-only" htmlFor="site-language-desktop">{t('nav.language', 'Language')}</label>
-            <select
-              id="site-language-desktop"
-              value={language}
-              onChange={(event) => handleLanguageChange(event.target.value as SupportedLanguage)}
-              className="rounded-full border border-white/15 bg-[#101010] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-[#D6D6D6] outline-none transition-colors focus:border-[#00E5FF]"
-            >
-              {LANGUAGE_OPTIONS.map((language) => (
-                <option key={language.code} value={language.code}>
-                  {language.label}
-                </option>
-              ))}
-            </select>
             <Button variant="ghost" className="rounded-full font-semibold text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
             <Button className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] font-semibold text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
           </div>
@@ -230,12 +216,6 @@ export function Header({ onNavigate }: HeaderProps) {
               </button>
               <button
                 className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
-                onClick={() => { handleNavClick('listener-app'); }}
-              >
-                Listen
-              </button>
-              <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
                 onClick={() => { handleNavClick('lyrics'); }}
               >
                 Lyrics
@@ -259,21 +239,6 @@ export function Header({ onNavigate }: HeaderProps) {
               >
                 {t('nav.blog', 'Blog')}
               </button>
-              <div className="pt-2">
-                <label className="mb-1 block text-sm font-medium text-[#B3B3B3]" htmlFor="site-language-mobile">{t('nav.language', 'Language')}</label>
-                <select
-                  id="site-language-mobile"
-                  value={language}
-                  onChange={(event) => handleLanguageChange(event.target.value as SupportedLanguage)}
-                  className="w-full rounded-md border border-white/15 bg-[#111111] px-3 py-2 text-sm font-medium text-[#D6D6D6] outline-none transition-colors focus:border-[#00E5FF]"
-                >
-                  {LANGUAGE_OPTIONS.map((language) => (
-                    <option key={language.code} value={language.code}>
-                      {language.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
               <div className="flex flex-col gap-2 pt-2">
                 <Button variant="ghost" className="text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
                 <Button className="bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>

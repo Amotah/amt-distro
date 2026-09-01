@@ -1,13 +1,6 @@
 {
-  "projectId": "prj_XXX",
-  "orgId": "team_XXX",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
-  "env": {
-    "VITE_SUPABASE_URL": "@supabase_url",
-    "VITE_SUPABASE_ANON_KEY": "@supabase_anon_key"
-  },
-  "envPrefix": "VITE_",
   "framework": "vite",
   "rewrites": [
     {
@@ -15,11 +8,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/:slug",
-      "destination": "/index.html"
-    },
-    {
-      "source": "/(.*)",
+      "source": "/((?!.*\\.).*)",
       "destination": "/index.html"
     }
   ]

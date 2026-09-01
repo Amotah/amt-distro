@@ -27,6 +27,7 @@ const SmartLinksView = lazy(() => import('./components/dashboard/SmartLinksView'
 const SmartLinkAnalyticsView = lazy(() => import('./components/dashboard/SmartLinkAnalyticsView').then((module) => ({ default: module.SmartLinkAnalyticsView })));
 const PromotionView = lazy(() => import('./components/dashboard/PromotionDashboard').then((module) => ({ default: module.PromotionDashboard })));
 const BankReconciliation = lazy(() => import('./components/admin/BankReconciliation').then((module) => ({ default: module.BankReconciliation })));
+const LyricsSubmission = lazy(() => import('./components/dashboard/LyricsSubmission').then((module) => ({ default: module.LyricsSubmission })));
 import { ForceChangePassword } from './components/admin/ForceChangePassword';
 
 function withSuspense(element: React.ReactNode) {
@@ -163,6 +164,10 @@ export const createDashboardRouter = (onLogout: () => void) => {
         {
           path: 'promotion',
           element: withSuspense(<PromotionView />),
+        },
+        {
+          path: 'lyrics',
+          element: withSuspense(<LyricsSubmission />),
         },
         {
           path: 'payment/callback',

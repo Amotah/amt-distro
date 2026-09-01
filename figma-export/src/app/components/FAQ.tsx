@@ -31,8 +31,8 @@ export function FAQ() {
           <div className="mb-6 inline-flex h-16 w-16 items-center justify-center rounded-full border border-[#FF6B00]/30 bg-gradient-to-br from-[#FF6B00]/15 to-[#FFD600]/8 shadow-[0_8px_24px_rgba(255,107,0,0.15)]">
             <HelpCircle className="h-8 w-8 text-[#FF6B00]" />
           </div>
-          <h2 className="text-4xl mb-4 text-white font-bold">{t('faq.title', 'Frequently Asked Questions')}</h2>
-          <p className="text-[#B3B3B3] text-lg">
+          <h2 className="text-3xl mb-3 text-white font-bold">{t('faq.title', 'Frequently Asked Questions')}</h2>
+          <p className="text-[#B3B3B3] text-base">
             {t('faq.subtitle', 'Everything you need to know about AMT DISTRO')}
           </p>
         </div>
@@ -48,7 +48,7 @@ export function FAQ() {
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-base font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
+                    <h3 className="text-sm font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
                     <ChevronDown
                       className={`h-5 w-5 text-[#FF6B00] flex-shrink-0 transition-all duration-300 ${
                         openIndex === index ? 'rotate-180' : ''
@@ -74,7 +74,7 @@ export function FAQ() {
               >
                 <div className="p-6">
                   <div className="flex items-start justify-between gap-4">
-                    <h3 className="text-base font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
+                    <h3 className="text-sm font-semibold text-white leading-6 pr-2 transition-colors duration-300 group-hover:text-[#FFD600]">{t(faq.qKey, faq.qFb)}</h3>
                     <ChevronDown
                       className={`h-5 w-5 text-[#FF6B00] flex-shrink-0 transition-all duration-300 ${
                         openIndex === index ? 'rotate-180' : ''

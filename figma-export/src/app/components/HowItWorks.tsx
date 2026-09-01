@@ -14,10 +14,10 @@ export function HowItWorks() {
     <section id="how-it-works" className="bg-[#0A0A0A] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
       <div className="w-full">
         <div className="text-center mb-12">
-          <h2 className="text-4xl mb-4 text-white font-bold">
+          <h2 className="text-3xl mb-3 text-white font-bold">
             {t('how.title', 'How It Works')}
           </h2>
-          <p className="text-xl text-[#B3B3B3] max-w-2xl mx-auto">
+          <p className="text-base text-[#B3B3B3] max-w-2xl mx-auto">
             {t('how.subtitle', 'Get your music out there in three simple steps')}
           </p>
         </div>
@@ -38,8 +38,8 @@ export function HowItWorks() {
                 <div className="absolute top-6 left-1/2 -translate-x-1/2 w-12 h-12 rounded-full bg-[#0A0A0A] border-4 border-[#FF6B00] flex items-center justify-center z-20">
                   <span className="text-[#FFD600] font-bold">{index + 1}</span>
                 </div>
-                <h3 className="text-2xl mb-3 text-white font-bold">{t(step.titleKey, step.titleFb)}</h3>
-                <p className="text-[#B3B3B3]">{t(step.descKey, step.descFb)}</p>
+                <h3 className="text-xl mb-3 text-white font-bold">{t(step.titleKey, step.titleFb)}</h3>
+                <p className="text-sm text-[#B3B3B3]">{t(step.descKey, step.descFb)}</p>
               </div>
             );
           })}

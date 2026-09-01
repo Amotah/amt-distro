@@ -46,10 +46,10 @@ export function CoreCapabilities() {
           <div className="mb-6 inline-flex rounded-full border border-[#FF6B00]/30 bg-[#FF6B00]/8 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#FFD600]">
             {t('capabilities.badge', 'Core Capabilities')}
           </div>
-          <h2 className="max-w-3xl mx-auto text-[2rem] font-bold leading-tight text-white sm:text-[2.35rem] mb-4">
+          <h2 className="max-w-3xl mx-auto text-2xl font-bold leading-tight text-white sm:text-[1.75rem] mb-3">
             {t('capabilities.title', 'Everything you need to release, grow, and get paid.')}
           </h2>
-          <p className="max-w-2xl mx-auto text-[#B3B3B3] text-base leading-6">
+          <p className="max-w-2xl mx-auto text-[#B3B3B3] text-sm leading-6">
             {t('capabilities.subtitle', 'Built from the ground up to handle professional music distribution with the simplicity independent artists deserve.')}
           </p>
         </div>
@@ -76,7 +76,7 @@ export function CoreCapabilities() {
                   </div>
 
                   {/* Title */}
-                  <h3 className="mb-3 text-lg font-semibold text-white transition-colors duration-300 group-hover:text-white">
+                  <h3 className="mb-3 text-base font-semibold text-white transition-colors duration-300 group-hover:text-white">
                     {capability.title}
                   </h3>
 

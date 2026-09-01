@@ -1,94 +1,25 @@
 import { Button } from './ui/button';
-import { ArrowRight, BarChart3, Play, RadioTower, ShieldCheck } from 'lucide-react';
+import { ArrowRight, Play, RadioTower, ShieldCheck } from 'lucide-react';
 import { useLanguage } from '../utils/i18n';
-import { Logos } from '../../assets/logos';
 
 const HERO_PLATFORMS = [
-  {
-    name: 'YouTube Music',
-    logo: '/platform-logos/youtube-music.jpg',
-    surfaceClassName: 'bg-[#F21212] border-white/8',
-  },
-  {
-    name: 'Deezer',
-    logo: '/platform-logos/deezer.png',
-    surfaceClassName: 'bg-[linear-gradient(135deg,#7C2DFF_0%,#A238FF_100%)] border-white/8',
-  },
-  {
-    name: 'Spotify',
-    logoNode: Logos.spotify,
-    surfaceClassName: 'bg-[#1DB954] border-white/8',
-  },
-  {
-    name: 'Apple Music',
-    logo: '/platform-logos/apple-music.jpg',
-    surfaceClassName: 'bg-[#FA4A67] border-white/8',
-  },
-  {
-    name: 'Amazon Music',
-    logo: '/platform-logos/amazon-music.jpg',
-    surfaceClassName: 'bg-[linear-gradient(130deg,#091115_0%,#0E1A20_100%)] border-white/8',
-  },
-  {
-    name: 'iHeart',
-    logo: '/platform-logos/iheart.jpg',
-    surfaceClassName: 'bg-[#D6003A] border-white/8',
-  },
-  {
-    name: 'Tidal',
-    logo: '/platform-logos/tidal.png',
-    surfaceClassName: 'bg-[#040404] border-white/10',
-  },
-  {
-    name: 'SoundCloud',
-    logo: '/platform-logos/soundcloud.png',
-    surfaceClassName: 'bg-[#FF7A00] border-white/8',
-  },
-  {
-    name: 'Pandora',
-    logo: '/platform-logos/pandora.jpeg',
-    surfaceClassName: 'bg-[#2A6FE4] border-white/8',
-  },
-  {
-    name: 'Boomplay',
-    logo: '/platform-logos/boomplay.png',
-    surfaceClassName: 'bg-[#FF8C00] border-white/8',
-  },
-  {
-    name: 'Audiomack',
-    logo: '/platform-logos/audiomack.jpg',
-    surfaceClassName: 'bg-[#F7B500] border-white/8',
-  },
-  {
-    name: 'TikTok',
-    logo: '/platform-logos/tiktok.png',
-    surfaceClassName: 'bg-[#0D0D0D] border-white/10',
-  },
-  {
-    name: 'Meta',
-    logo: '/platform-logos/meta.jpg',
-    surfaceClassName: 'bg-[linear-gradient(135deg,#005CE6_0%,#2F86FF_100%)] border-white/8',
-  },
-  {
-    name: 'KKBOX',
-    logo: '/platform-logos/kkbox.jpg',
-    surfaceClassName: 'bg-[#08A8EA] border-white/8',
-  },
-  {
-    name: 'JOOX',
-    logo: '/platform-logos/joox.jpg',
-    surfaceClassName: 'bg-[#00B96E] border-white/8',
-  },
-  {
-    name: 'Anghami',
-    logo: '/platform-logos/anghami.jpg',
-    surfaceClassName: 'bg-[#7D36F5] border-white/8',
-  },
-  {
-    name: 'Napster',
-    logo: '/platform-logos/napster-logo.jpg',
-    surfaceClassName: 'bg-[linear-gradient(130deg,#461A90_0%,#7C3AED_100%)] border-white/8',
-  },
+  'Spotify',
+  'Apple Music',
+  'YouTube Music',
+  'Amazon Music',
+  'Deezer',
+  'Tidal',
+  'SoundCloud',
+  'Boomplay',
+  'Audiomack',
+  'TikTok',
+  'Meta',
+  'Pandora',
+  'iHeart',
+  'KKBOX',
+  'JOOX',
+  'Anghami',
+  'Napster',
 ];
 
 export function Hero() {
@@ -110,24 +41,18 @@ export function Hero() {
               </div>
 
               <div className="max-w-2xl">
-                <h1 className="text-4xl font-black leading-[0.98] text-white sm:text-5xl lg:text-[4.35rem]">
+                <h1 className="text-3xl font-black leading-[1.05] text-white sm:text-4xl lg:text-5xl">
                   {t('hero.titlePrefix', 'Distribute Your Music to')}{' '}
                   <span className="bg-gradient-to-r from-[#FF6B00] via-[#FF9A3D] to-[#FFD600] bg-clip-text text-transparent">
                     {t('hero.titleHighlight', 'Every Platform')}
                   </span>
                 </h1>
 
-                <p className="mt-6 max-w-xl text-base leading-7 text-white/72 sm:text-lg sm:leading-8">
+                <p className="mt-5 max-w-xl text-sm leading-6 text-white/72 sm:text-base sm:leading-7">
                   {t('hero.subtitle', 'Get your music on Spotify, Apple Music, Amazon, and 150+ streaming services. Keep 100% of your rights and royalties.')}
                 </p>
               </div>
 
-              <div className="mt-7 flex flex-wrap gap-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/58 sm:text-xs">
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2">Release operations</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2">Royalty visibility</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2">Promotion support</span>
-                <span className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2">Rights protection</span>
-              </div>
 
               <div className="mt-8 flex flex-col gap-4 sm:flex-row">
                 <Button
@@ -150,15 +75,15 @@ export function Hero() {
 
               <div className="mt-10 grid max-w-2xl gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/10 bg-[#0B0B0B]/85 px-4 py-4">
-                  <div className="text-3xl font-bold text-[#FFD600]">150+</div>
+                  <div className="text-2xl font-bold text-[#FFD600]">150+</div>
                   <div className="mt-1 text-sm text-white/60">{t('hero.statPlatforms', 'Platforms')}</div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-[#0B0B0B]/85 px-4 py-4">
-                  <div className="text-3xl font-bold text-[#FFD600]">24h</div>
+                  <div className="text-2xl font-bold text-[#FFD600]">24h</div>
                   <div className="mt-1 text-sm text-white/60">{t('hero.statDistribution', 'Distribution')}</div>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-[#0B0B0B]/85 px-4 py-4">
-                  <div className="text-3xl font-bold text-[#FFD600]">100%</div>
+                  <div className="text-2xl font-bold text-[#FFD600]">100%</div>
                   <div className="mt-1 text-sm text-white/60">{t('hero.statRoyalties', 'Royalties')}</div>
                 </div>
               </div>
@@ -188,22 +113,6 @@ export function Hero() {
               <div className="absolute inset-0 bg-[linear-gradient(112deg,rgba(0,234,255,0.08),transparent_42%)]" />
 
               <div className="relative flex h-full flex-col justify-end gap-4 p-6 sm:p-8">
-                <div className="self-end rounded-2xl border border-white/10 bg-[#0C0C0C]/90 p-4 shadow-[0_20px_50px_rgba(0,0,0,0.35)] backdrop-blur-md sm:w-[16.5rem]">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs uppercase tracking-[0.2em] text-white/45">This week</div>
-                      <div className="mt-2 text-3xl font-bold text-white">₦2.4M</div>
-                    </div>
-                    <div className="rounded-xl bg-[#FF6B00]/15 p-2 text-[#FFD600]">
-                      <BarChart3 className="h-5 w-5" />
-                    </div>
-                  </div>
-                  <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                    <div className="h-full w-[72%] rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600]" />
-                  </div>
-                  <div className="mt-3 text-sm text-white/62">Revenue, release momentum, and campaign performance in one workflow.</div>
-                </div>
-
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-2xl border border-white/10 bg-[#101010]/88 p-5 shadow-[0_18px_40px_rgba(0,0,0,0.32)] backdrop-blur-md">
                     <div className="flex items-center gap-3">
@@ -261,35 +170,16 @@ export function Hero() {
           <div className="relative overflow-hidden rounded-3xl border border-[#FF6B00]/12 bg-[#0D0D0D] px-0 py-6">
             <div className="pointer-events-none absolute inset-y-0 left-0 z-10 w-20 bg-gradient-to-r from-[#111111] to-transparent" />
             <div className="pointer-events-none absolute inset-y-0 right-0 z-10 w-20 bg-gradient-to-l from-[#111111] to-transparent" />
-            <div className="hero-platform-marquee-track flex w-max items-center gap-6 px-6">
+            <div className="hero-platform-marquee-track flex w-max items-center gap-3 px-6">
               {[0, 1].map((copy) => (
-                <div key={copy} className="flex shrink-0 items-center gap-6 pr-6">
-                  {HERO_PLATFORMS.map((platform, index) => (
-                    <div
-                      key={`${copy}-${platform.name}-${index}`}
-                      className={`group relative flex h-[128px] w-[236px] shrink-0 items-center justify-center overflow-hidden rounded-3xl border shadow-[0_16px_36px_rgba(0,0,0,0.36)] transition-transform duration-300 hover:-translate-y-1 ${platform.surfaceClassName}`}
-                      aria-label={platform.name}
-                      title={platform.name}
+                <div key={copy} className="flex shrink-0 items-center gap-3 pr-3">
+                  {HERO_PLATFORMS.map((name, index) => (
+                    <span
+                      key={`${copy}-${name}-${index}`}
+                      className="shrink-0 rounded-full border border-white/10 bg-white/[0.04] px-5 py-3 text-sm font-semibold text-white/75 transition-colors hover:border-[#FF6B00]/40 hover:text-white"
                     >
-                      <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(255,255,255,0.07),rgba(255,255,255,0))]" />
-                      {platform.badge && (
-                        <span className="absolute bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-white/16 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-white/92">
-                          {platform.badge}
-                        </span>
-                      )}
-                      {platform.logoNode ? (
-                        <div className="relative z-10 flex w-full items-center justify-center px-4">
-                          {platform.logoNode}
-                        </div>
-                      ) : (
-                        <img
-                          src={platform.logo}
-                          alt={platform.name}
-                          className={`relative z-10 w-auto object-contain drop-shadow-[0_3px_10px_rgba(0,0,0,0.25)] ${platform.logoClassName || 'h-14 max-w-[78%]'}`}
-                          loading="lazy"
-                        />
-                      )}
-                    </div>
+                      {name}
+                    </span>
                   ))}
                 </div>
               ))}

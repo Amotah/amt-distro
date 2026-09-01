@@ -78,7 +78,7 @@ CREATE POLICY "Admin can view all lyrics"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   );
 
@@ -90,7 +90,7 @@ CREATE POLICY "Admin can create lyrics"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   );
 
@@ -102,7 +102,7 @@ CREATE POLICY "Admin can update lyrics"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   )
   WITH CHECK (
@@ -110,7 +110,7 @@ CREATE POLICY "Admin can update lyrics"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   );
 
@@ -122,7 +122,7 @@ CREATE POLICY "Admin can delete lyrics"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   );
 
@@ -151,6 +151,6 @@ CREATE POLICY "Admin can view audit logs"
     OR EXISTS (
       SELECT 1 FROM auth.users
       WHERE auth.users.id = auth.uid()
-      AND auth.users.user_metadata->>'role' IN ('admin', 'superadmin')
+      AND auth.users.raw_user_meta_data->>'role' IN ('admin', 'superadmin')
     )
   );

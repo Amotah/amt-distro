@@ -183,18 +183,6 @@ export function AdminLogin() {
             </p>
           </div>
         </div>
-
-        {/* Dev Credentials */}
-        <div className="mt-6 rounded-lg p-4 border"
-          style={{
-            backgroundColor: 'rgba(18, 24, 38, 0.5)',
-            borderColor: 'rgba(123, 97, 255, 0.1)',
-          }}
-        >
-          <p className="text-xs text-center" style={{ color: '#A0A7B8' }}>
-            <span className="font-semibold" style={{ color: '#7B61FF' }}>Dev Mode:</span> admin / admin
-          </p>
-        </div>
       </div>
 
       <style>{`

@@ -4184,4 +4184,505 @@ app.get('/make-server-79198001/admin/payroll/reports', verifyAuth, verifyAdmin, 
   }
 });
 
+// ==================== LYRICS SERVICE ROUTES ====================
+
+function getSubmitterDisplayName(profile: { artistName?: string; labelName?: string; email: string }) {
+  return profile.artistName || profile.labelName || profile.email.split('@')[0];
+}
+
+async function findLiveTrackWithRelease(trackId: string) {
+  const track = await metadataService.getTrackById(trackId);
+  if (!track) return null;
+  const release = await metadataService.getReleaseById(track.releaseId);
+  if (!release) return null;
+  return { track, release };
+}
+
+// ── Public: search live tracks to attach a lyrics submission/request to ────
+
+app.get('/make-server-79198001/lyrics/search-tracks', async (c) => {
+  try {
+    const query = (c.req.query('query') || '').trim().toLowerCase();
+    const releaseKeys = await kv.getEntriesByPrefix('release:user:');
+    const results: Array<{ trackId: string; title: string; artistName: string; albumName: string; artworkUrl: string; genre?: string; releaseDate?: string }> = [];
+
+    for (const key of releaseKeys) {
+      if (results.length >= 20) break;
+      const releaseId = key?.key?.split(':').pop();
+      if (!releaseId) continue;
+
+      const release = await metadataService.getReleaseById(releaseId);
+      if (!release || release.status !== 'live') continue;
+
+      if (query && !release.title.toLowerCase().includes(query) && !release.primaryArtist.toLowerCase().includes(query)) {
+        continue;
+      }
+
+      const tracks = await metadataService.getReleaseTracks(release.id);
+      for (const track of tracks) {
+        if (results.length >= 20) break;
+        if (query && !release.primaryArtist.toLowerCase().includes(query) && !track.title.toLowerCase().includes(query)) {
+          continue;
+        }
+        results.push({
+          trackId: track.id,
+          title: track.title,
+          artistName: release.primaryArtist,
+          albumName: release.title,
+          artworkUrl: release.artworkUrl,
+          genre: track.genre || release.genre,
+          releaseDate: release.releaseDate,
+        });
+      }
+    }
+
+    return c.json({ tracks: results });
+  } catch (error) {
+    console.error('Error searching tracks for lyrics:', error);
+    return c.json({ error: `Failed to search tracks: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public lyrics catalog (real data, no auth required) ────────────────────
+
+app.get('/make-server-79198001/lyrics/public', async (c) => {
+  try {
+    const sort = c.req.query('sort');
+    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
+
+    if (sort === 'trending') {
+      const lyrics = await lyricsService.getTrendingLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    if (sort === 'latest') {
+      const lyrics = await lyricsService.getLatestLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    const result = await lyricsService.getLyricsPublic({
+      search: c.req.query('search') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      limit,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching public lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/artist/:artistSlug', async (c) => {
+  try {
+    const artistSlug = c.req.param('artistSlug');
+    const result = await lyricsService.getLyricsArtist(artistSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching artist lyrics:', error);
+    return c.json({ error: `Failed to fetch artist lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/album/:albumSlug', async (c) => {
+  try {
+    const albumSlug = c.req.param('albumSlug');
+    const result = await lyricsService.getLyricsAlbum(albumSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching album lyrics:', error);
+    return c.json({ error: `Failed to fetch album lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/:lyricsId', async (c) => {
+  try {
+    const lyricsId = c.req.param('lyricsId');
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+
+    if (!lyrics || !lyrics.is_published || lyrics.verification_status !== 'verified') {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    void lyricsService.incrementLyricsView(lyricsId);
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public (anonymous): submit lyrics or request lyrics for a live track ───
+
+app.post('/make-server-79198001/lyrics/public/submit', async (c) => {
+  try {
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Please choose which song this is for' }, 400);
+    }
+
+    const isRequest = body.mode === 'request';
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim().slice(0, 20000) : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim().slice(0, 2000) : '';
+    const submitterName = typeof body.submitterName === 'string' ? body.submitterName.trim().slice(0, 120) : undefined;
+    const submitterEmail = typeof body.submitterEmail === 'string' ? body.submitterEmail.trim().slice(0, 200) : undefined;
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const found = await findLiveTrackWithRelease(body.trackId);
+    if (!found || found.release.status !== 'live') {
+      return c.json({ error: 'This song is not available for lyrics submissions yet' }, 404);
+    }
+
+    const { track, release } = found;
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: release.primaryArtist,
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Public lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: isRequest ? 'public-request' : 'public-submission',
+      copyright_status: 'review-required',
+      submitter_name: submitterName,
+      submitter_email: submitterEmail,
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting public lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Signed-in user: submit lyrics or request lyrics for one of their tracks ─
+
+app.post('/make-server-79198001/lyrics', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    const isRequest = body.isRequest === true;
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim() : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim() : '';
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+    if (!release || release.userId !== userId) {
+      return c.json({ error: 'Unauthorized: You do not own this track' }, 403);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      artist_id: profile.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: getSubmitterDisplayName(profile),
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: 'artist-submission',
+      copyright_status: 'review-required',
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Signed-in user: list their own lyrics submissions/requests
+app.get('/make-server-79198001/lyrics/mine', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const result = await lyricsService.getLyricsByArtistId(profile.id, {
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching your lyrics:', error);
+    return c.json({ error: `Failed to fetch your lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    const updates: Record<string, any> = {};
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) updates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.language === 'string' && body.language.trim()) updates.lyrics_language = body.language.trim();
+    if (typeof body.genre === 'string' && body.genre.trim()) updates.genre = body.genre.trim();
+
+    // Editing previously published/verified content sends it back for admin review.
+    if (lyrics.is_published || lyrics.verification_status === 'verified') {
+      updates.is_published = false;
+      updates.verification_status = 'pending';
+    }
+
+    const updatedLyrics = await lyricsService.updateLyrics(lyricsId, updates);
+
+    return c.json({ lyrics: updatedLyrics });
+  } catch (error) {
+    console.error('Error updating lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    if (lyrics.is_published) {
+      return c.json({ error: 'This lyrics entry is already published. Contact support to remove it.' }, 400);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Admin: manage all lyrics submissions and requests ───────────────────────
+
+app.get('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.view'), async (c) => {
+  try {
+    const isPublishedParam = c.req.query('isPublished');
+    const result = await lyricsService.getLyricsAdmin({
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      artistName: c.req.query('artistName') || undefined,
+      search: c.req.query('search') || undefined,
+      isPublished: isPublishedParam === 'true' ? true : isPublishedParam === 'false' ? false : undefined,
+      limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching admin lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Admin: directly add lyrics for any track (import / on behalf of an artist)
+app.post('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    if (!body.lyricsText || typeof body.lyricsText !== 'string' || !body.lyricsText.trim()) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release?.id,
+      title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : track.title,
+      artist_name: typeof body.artistName === 'string' && body.artistName.trim() ? body.artistName.trim() : (release?.primaryArtist || 'Unknown artist'),
+      album_name: typeof body.albumName === 'string' && body.albumName.trim() ? body.albumName.trim() : release?.title,
+      lyrics_text: body.lyricsText.trim(),
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release?.upc,
+      genre: typeof body.genre === 'string' && body.genre.trim() ? body.genre.trim() : (track.genre || release?.genre),
+      release_date: release?.releaseDate,
+      artwork_url: release?.artworkUrl,
+      source: 'admin-import',
+      copyright_status: 'cleared',
+    });
+
+    await adminService.logAdminAction(adminUserId, 'create', 'lyrics', lyrics?.id || track.id, { trackId: track.id });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error creating admin lyrics:', error);
+    return c.json({ error: `Failed to create lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    let lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    if (body.verificationStatus === 'verified') {
+      lyrics = await lyricsService.verifyLyrics(lyricsId);
+    } else if (body.verificationStatus === 'rejected') {
+      lyrics = await lyricsService.rejectLyrics(lyricsId);
+    }
+
+    if (body.isPublished === true) {
+      lyrics = await lyricsService.publishLyrics(lyricsId);
+    } else if (body.isPublished === false) {
+      lyrics = await lyricsService.unpublishLyrics(lyricsId);
+    }
+
+    const fieldUpdates: Record<string, any> = {};
+    if (typeof body.title === 'string' && body.title.trim()) fieldUpdates.title = body.title.trim();
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) fieldUpdates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.albumName === 'string') fieldUpdates.album_name = body.albumName.trim();
+    if (typeof body.genre === 'string') fieldUpdates.genre = body.genre.trim();
+    if (typeof body.language === 'string' && body.language.trim()) fieldUpdates.lyrics_language = body.language.trim();
+    if (typeof body.artworkUrl === 'string') fieldUpdates.artwork_url = body.artworkUrl.trim();
+    if (typeof body.copyrightStatus === 'string') fieldUpdates.copyright_status = body.copyrightStatus;
+
+    if (Object.keys(fieldUpdates).length > 0) {
+      lyrics = await lyricsService.updateLyrics(lyricsId, fieldUpdates);
+    }
+
+    await adminService.logAdminAction(adminUserId, 'update', 'lyrics', lyricsId, { changes: body });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error updating admin lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.delete'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    await adminService.logAdminAction(adminUserId, 'delete', 'lyrics', lyricsId, { lyrics });
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting admin lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
 Deno.serve(app.fetch);

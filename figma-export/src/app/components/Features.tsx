@@ -19,10 +19,10 @@ export function Features() {
       <div className="mx-auto w-full max-w-7xl">
         <div className="mb-12 text-center">
           <p className="landing-section-kicker">Core capabilities</p>
-          <h2 className="text-4xl mb-4 text-white font-bold">
+          <h2 className="text-3xl mb-3 text-white font-bold">
             {t('features.title', 'Everything You Need to Succeed')}
           </h2>
-          <p className="text-xl text-[#B3B3B3] max-w-2xl mx-auto">
+          <p className="text-base text-[#B3B3B3] max-w-2xl mx-auto">
             {t('features.subtitle', 'Professional music distribution made simple. Focus on creating while we handle the rest.')}
           </p>
         </div>
@@ -35,7 +35,7 @@ export function Features() {
                 <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#FFD600] shadow-[0_12px_30px_rgba(255,107,0,0.18)]">
                   <Icon className="h-5 w-5 text-white" />
                 </div>
-                <h3 className="mb-3 text-lg font-bold text-white">{t(feature.titleKey, feature.titleFb)}</h3>
+                <h3 className="mb-3 text-base font-bold text-white">{t(feature.titleKey, feature.titleFb)}</h3>
                 <p className="text-sm leading-6 text-[#B3B3B3]">{t(feature.descKey, feature.descFb)}</p>
               </Card>
             );

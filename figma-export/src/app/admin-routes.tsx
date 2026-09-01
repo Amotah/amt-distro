@@ -42,7 +42,7 @@ const AccountingLedger = lazy(() => import('./components/admin/AccountingLedger'
 const PayrollManagement = lazy(() => import('./components/admin/PayrollManagement').then((module) => ({ default: module.PayrollManagement })));
 const ExpenseManagement = lazy(() => import('./components/admin/ExpenseManagement').then((module) => ({ default: module.ExpenseManagement })));
 const HRDashboard = lazy(() => import('./components/admin/HRDashboard').then((module) => ({ default: module.HRDashboard })));
-import { AdminProvider } from './contexts/AdminContext';
+import { AdminProvider, useAdmin } from './contexts/AdminContext';
 
 function withSuspense(element: React.ReactNode) {
   return <Suspense fallback={<RouteTransitionLoader />}>{element}</Suspense>;
@@ -50,10 +50,22 @@ function withSuspense(element: React.ReactNode) {
 
 // Protected Route Component
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
+  const { adminUser, isLoading } = useAdmin();
   const mustChange = sessionStorage.getItem('mustChangePassword') === 'true';
+  
+  if (isLoading) {
+    return <RouteTransitionLoader />;
+  }
+  
+  // Redirect to login if not authenticated
+  if (!adminUser) {
+    return <Navigate to="/admin/login" replace />;
+  }
+  
   if (mustChange) {
     return <Navigate to="/admin/change-password" replace />;
   }
+  
   return <>{children}</>;
 }
 

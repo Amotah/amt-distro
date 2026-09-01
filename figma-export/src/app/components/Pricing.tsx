@@ -74,10 +74,10 @@ export function Pricing({ onSelectPlan }: PricingProps) {
       <div className="mx-auto w-full max-w-7xl">
         <div className="mb-12 text-center">
           <p className="landing-section-kicker">Pricing</p>
-          <h2 className="text-4xl mb-4 text-white font-bold">
+          <h2 className="text-3xl mb-3 text-white font-bold">
             {t('pricing.title', 'Simple, Transparent Pricing')}
           </h2>
-          <p className="text-xl text-[#B3B3B3] max-w-2xl mx-auto">
+          <p className="text-base text-[#B3B3B3] max-w-2xl mx-auto">
             {t('pricing.subtitle', 'Choose the plan that works for you. No hidden fees, no surprises.')}
           </p>
         </div>
@@ -114,13 +114,13 @@ export function Pricing({ onSelectPlan }: PricingProps) {
               )}
 
               <div className="mb-6">
-                <h3 className="text-2xl mb-2 text-white font-bold">{t(plan.nameKey, plan.nameFb)}</h3>
-                <p className="text-[#B3B3B3]">{t(plan.descKey, plan.descFb)}</p>
+                <h3 className="text-xl mb-2 text-white font-bold">{t(plan.nameKey, plan.nameFb)}</h3>
+                <p className="text-sm text-[#B3B3B3]">{t(plan.descKey, plan.descFb)}</p>
               </div>
 
               <div className="mb-6 rounded-2xl border border-white/8 bg-black/20 p-4">
-                <span className="text-5xl text-[#FFD600] font-bold">{plan.price}</span>
-                <span className="text-[#B3B3B3]">/{plan.period === 'release' ? t('pricing.period.release', 'release') : t('pricing.period.month', 'month')}</span>
+                <span className="text-3xl text-[#FFD600] font-bold">{plan.price}</span>
+                <span className="text-sm text-[#B3B3B3]">/{plan.period === 'release' ? t('pricing.period.release', 'release') : t('pricing.period.month', 'month')}</span>
               </div>
 
               <Button
@@ -134,7 +134,7 @@ export function Pricing({ onSelectPlan }: PricingProps) {
                 {plan.featureKeys.map((feature) => (
                   <li key={feature.key} className="flex items-start gap-3">
                     <Check className="w-5 h-5 text-[#1DB954] flex-shrink-0 mt-0.5" />
-                    <span className="text-[#B3B3B3]">{t(feature.key, feature.fb)}</span>
+                    <span className="text-sm text-[#B3B3B3]">{t(feature.key, feature.fb)}</span>
                   </li>
                 ))}
               </ul>
