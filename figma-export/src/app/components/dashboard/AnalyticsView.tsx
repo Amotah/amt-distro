@@ -27,7 +27,12 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { getAnalyticsSummary, type AnalyticsSummary } from '../../utils/analytics-api';
+import {
+  getAnalyticsSummary,
+  getArtistListenerMonetizationSummary,
+  type AnalyticsSummary,
+  type ArtistListenerMonetizationSummary,
+} from '../../utils/analytics-api';
 
 const PLATFORM_COLORS = ['#1DB954', '#FA243C', '#FF0000', '#FF9900', '#2563EB', '#9333EA'];
 const PLATFORM_DOT_CLASSES = ['bg-[#1DB954]', 'bg-[#FA243C]', 'bg-[#FF0000]', 'bg-[#FF9900]', 'bg-[#2563EB]', 'bg-[#9333EA]'];
@@ -76,6 +81,7 @@ export function AnalyticsView() {
   const isLabelDashboard = location.pathname.startsWith('/label-dashboard');
   const [timeRange, setTimeRange] = useState('7days');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
+  const [listenerMonetization, setListenerMonetization] = useState<ArtistListenerMonetizationSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,9 +92,13 @@ export function AnalyticsView() {
       try {
         setLoading(true);
         setError(null);
-        const nextSummary = await getAnalyticsSummary(timeRange);
+        const [nextSummary, nextListenerMonetization] = await Promise.all([
+          getAnalyticsSummary(timeRange),
+          getArtistListenerMonetizationSummary().catch(() => null),
+        ]);
         if (active) {
           setSummary(nextSummary);
+          setListenerMonetization(nextListenerMonetization);
         }
       } catch (loadError) {
         if (active) {
@@ -215,6 +225,25 @@ export function AnalyticsView() {
             </Card>
           );
         })}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+        <Card className="border-[#00E5FF]/20 bg-[#161616] p-5 text-white">
+          <div className="text-sm text-[#B3B3B3] mb-2">Qualified listener streams</div>
+          <div className="text-2xl font-semibold">{formatCompactNumber(listenerMonetization?.qualifiedStreams || 0)}</div>
+        </Card>
+        <Card className="border-[#FFD600]/20 bg-[#161616] p-5 text-white">
+          <div className="text-sm text-[#B3B3B3] mb-2">Qualified downloads</div>
+          <div className="text-2xl font-semibold">{formatCompactNumber(listenerMonetization?.qualifiedDownloads || 0)}</div>
+        </Card>
+        <Card className="border-[#FF6B00]/20 bg-[#161616] p-5 text-white">
+          <div className="text-sm text-[#B3B3B3] mb-2">Net listener revenue</div>
+          <div className="text-2xl font-semibold">₦{(listenerMonetization?.netArtistRevenue || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+        </Card>
+        <Card className="border-[#9333EA]/20 bg-[#161616] p-5 text-white">
+          <div className="text-sm text-[#B3B3B3] mb-2">Listener rewards funded</div>
+          <div className="text-2xl font-semibold">₦{(listenerMonetization?.listenerRewardsFunded || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}</div>
+        </Card>
       </div>
 
       {/* Streams Over Time */}

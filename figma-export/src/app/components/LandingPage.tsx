@@ -3,28 +3,13 @@ import { Hero } from './Hero';
 import { Features } from './Features';
 import { HowItWorks } from './HowItWorks';
 import { Pricing } from './Pricing';
+import { CoreCapabilities } from './CoreCapabilities';
+import { ReportingEngine } from './ReportingEngine';
 import { Testimonials } from './Testimonials';
 import { FAQ } from './FAQ';
 
 interface LandingPageProps {
   onSelectPlan: (planId: string) => void;
-}
-
-function getRevealDelayClass(delay: number) {
-  switch (delay) {
-    case 90:
-      return 'landing-reveal-delay-90';
-    case 120:
-      return 'landing-reveal-delay-120';
-    case 150:
-      return 'landing-reveal-delay-150';
-    case 180:
-      return 'landing-reveal-delay-180';
-    case 210:
-      return 'landing-reveal-delay-210';
-    default:
-      return '';
-  }
 }
 
 function RevealSection({ children, delay = 0, className = '' }: { children: ReactNode; delay?: number; className?: string }) {
@@ -66,7 +51,8 @@ function RevealSection({ children, delay = 0, className = '' }: { children: Reac
   return (
     <div
       ref={sectionRef}
-      className={`landing-reveal ${getRevealDelayClass(delay)} enter-from-${enterFrom} ${isVisible ? 'is-visible' : ''} ${className}`.trim()}
+      className={`landing-reveal enter-from-${enterFrom} ${isVisible ? 'is-visible' : ''} ${className}`.trim()}
+      style={{ transitionDelay: `${delay}ms` }}
     >
       {children}
     </div>
@@ -90,9 +76,15 @@ export function LandingPage({ onSelectPlan }: LandingPageProps) {
         <Pricing onSelectPlan={onSelectPlan} />
       </RevealSection>
       <RevealSection className="landing-section-shell" delay={180}>
+        <CoreCapabilities />
+      </RevealSection>
+      <RevealSection className="landing-section-shell" delay={195}>
+        <ReportingEngine />
+      </RevealSection>
+      <RevealSection className="landing-section-shell" delay={210}>
         <Testimonials />
       </RevealSection>
-      <RevealSection className="landing-section-shell landing-section-shell--last" delay={210}>
+      <RevealSection className="landing-section-shell landing-section-shell--last" delay={240}>
         <FAQ />
       </RevealSection>
     </div>

@@ -387,7 +387,7 @@ export async function createArtistProfile(
     subscriptionTier?: UserProfile['subscriptionTier'];
   }
 ): Promise<UserProfile> {
-  return createArtistProfileWithToken(getUserAuthToken(), data);
+  return createArtistProfileWithToken(await getUserAuthToken(), data);
 }
 
 export async function createLabelProfileWithToken(
@@ -433,7 +433,7 @@ export async function createLabelProfile(
     website?: string;
   }
 ): Promise<UserProfile> {
-  return createLabelProfileWithToken(getUserAuthToken(), data);
+  return createLabelProfileWithToken(await getUserAuthToken(), data);
 }
 
 export async function createManagedArtistAccount(

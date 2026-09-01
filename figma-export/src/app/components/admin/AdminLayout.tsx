@@ -75,6 +75,7 @@ export function AdminLayout() {
         { path: '/admin/artist-label', label: 'Artists & Labels', icon: UserCog, permission: 'users.view' },
         { path: '/admin/user-activity', label: 'User Activity', icon: Activity, permission: 'users.view' },
         { path: '/admin/releases', label: 'Releases', icon: Music, permission: 'releases.view' },
+        { path: '/admin/lyrics', label: 'Lyrics', icon: FileText, permission: 'releases.view' },
         { path: '/admin/track-upload', label: 'Track Upload', icon: Disc3, permission: 'releases.edit' },
         { path: '/admin/content-moderation', label: 'Moderation', icon: CheckCircle, permission: 'releases.approve' },
         { path: '/admin/content-moderation-panel', label: 'Moderation Panel', icon: ShieldAlert, permission: 'releases.approve' },

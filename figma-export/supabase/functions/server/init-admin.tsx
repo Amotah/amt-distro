@@ -186,15 +186,8 @@ export async function initializeDefaultAdmin() {
 // Check if admin needs initialization
 export async function checkAndInitializeAdmin() {
   try {
-    // Check if any admin users exist
-    const adminKeys = await kv.getByPrefix('admin:user:');
-    
-    if (adminKeys.length === 0) {
-      console.log('No admin users found. Initializing default admin...');
-      await initializeDefaultAdmin();
-    } else {
-      console.log(`✅ ${adminKeys.length} admin user(s) already exist`);
-    }
+    // Always run to ensure the default admin account and KV entries are intact
+    await initializeDefaultAdmin();
   } catch (error) {
     console.error('Error checking admin initialization:', error);
   }

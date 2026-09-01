@@ -20,11 +20,8 @@ import * as adminService from "./admin-service.tsx";
 import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
-import * as supportService from "./support-service.tsx";
-
-const DEFAULT_ADMIN_EMAIL = Deno.env.get('DEFAULT_ADMIN_EMAIL') ?? 'admin@amtdistro.com';
-const DEFAULT_ADMIN_PASSWORD = Deno.env.get('DEFAULT_ADMIN_PASSWORD') ?? 'admin';
-const DEFAULT_ADMIN_USERNAME = Deno.env.get('DEFAULT_ADMIN_USERNAME') ?? 'admin';
+import * as lyricsService from "./lyrics-service.tsx";
+import { buildPasswordChangeUpdate } from './password-update.ts';
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -97,9 +94,9 @@ app.post('/make-server-79198001/init-admin', async (c) => {
       success: true, 
       message: 'Admin user initialized',
       credentials: {
-        username: DEFAULT_ADMIN_USERNAME,
-        email: DEFAULT_ADMIN_EMAIL,
-        password: DEFAULT_ADMIN_PASSWORD
+        username: 'admin',
+        email: 'admin@amtdistro.com',
+        password: 'admin'
       }
     });
   } catch (error: any) {
@@ -141,6 +138,23 @@ async function verifyAuth(c: any, next: any) {
   const activeUser = await userService.getUserByUserId(user.id);
   if (!activeUser) {
     return c.json({ error: 'Unauthorized: User account no longer exists' }, 401);
+  }
+
+  c.set('userId', user.id);
+  c.set('userEmail', user.email);
+  await next();
+}
+
+// JWT-only auth for routes that must run before a user profile exists (e.g. profile creation)
+async function verifyAuthOnly(c: any, next: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return c.json({ error: 'Unauthorized: No token provided' }, 401);
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) {
+    return c.json({ error: 'Unauthorized: Invalid token' }, 401);
   }
 
   c.set('userId', user.id);
@@ -774,7 +788,7 @@ app.post('/make-server-79198001/payments/paystack/webhook', async (c) => {
 });
 
 // Create artist profile
-app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/artist", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -821,7 +835,7 @@ app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
 });
 
 // Create label profile
-app.post("/make-server-79198001/users/label", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/label", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -1065,107 +1079,6 @@ app.put("/make-server-79198001/users/me", verifyAuth, async (c) => {
   } catch (error) {
     console.error('Error updating user profile:', error);
     return c.json({ error: `Failed to update user profile: ${error.message}` }, 500);
-  }
-});
-
-// Support ticket routes
-app.get('/make-server-79198001/support/tickets', verifyAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const tickets = await supportService.getSupportTicketsForUser(userId);
-    return c.json({ tickets });
-  } catch (error) {
-    console.error('Error fetching support tickets:', error);
-    return c.json({ error: `Failed to fetch support tickets: ${error.message}` }, 500);
-  }
-});
-
-app.post('/make-server-79198001/support/tickets', verifyAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const body = await c.req.json();
-    const user = await userService.getUserByUserId(userId);
-
-    if (!user) {
-      return c.json({ error: 'User profile not found' }, 404);
-    }
-
-    const ticket = await supportService.createSupportTicket({
-      userId,
-      userEmail: user.email,
-      userName:
-        [user.firstName, user.lastName].filter(Boolean).join(' ')
-        || ('artistName' in user ? user.artistName : '')
-        || ('labelName' in user ? user.labelName : '')
-        || user.email,
-      userRole: user.role,
-      subject: typeof body.subject === 'string' ? body.subject : '',
-      category: body.category,
-      message: typeof body.message === 'string' ? body.message : '',
-      priority: body.priority,
-    });
-
-    return c.json({ ticket }, 201);
-  } catch (error) {
-    console.error('Error creating support ticket:', error);
-    return c.json({ error: `Failed to create support ticket: ${error.message}` }, 500);
-  }
-});
-
-app.get('/make-server-79198001/support/tickets/:ticketId', verifyAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const ticketId = c.req.param('ticketId');
-    const ticket = await supportService.getSupportTicketForUser(ticketId, userId);
-
-    if (!ticket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket });
-  } catch (error) {
-    console.error('Error fetching support ticket:', error);
-    return c.json({ error: `Failed to fetch support ticket: ${error.message}` }, 500);
-  }
-});
-
-app.post('/make-server-79198001/support/tickets/:ticketId/messages', verifyAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const ticketId = c.req.param('ticketId');
-    const body = await c.req.json();
-    const user = await userService.getUserByUserId(userId);
-
-    if (!user) {
-      return c.json({ error: 'User profile not found' }, 404);
-    }
-
-    const updatedTicket = await supportService.addUserReply(ticketId, userId, user.email, body.message);
-    if (!updatedTicket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket: updatedTicket });
-  } catch (error) {
-    console.error('Error adding support message:', error);
-    return c.json({ error: `Failed to add support message: ${error.message}` }, 500);
-  }
-});
-
-app.patch('/make-server-79198001/support/tickets/:ticketId/close', verifyAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const ticketId = c.req.param('ticketId');
-    const updatedTicket = await supportService.closeUserTicket(ticketId, userId);
-
-    if (!updatedTicket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket: updatedTicket });
-  } catch (error) {
-    console.error('Error closing support ticket:', error);
-    return c.json({ error: `Failed to close support ticket: ${error.message}` }, 500);
   }
 });
 
@@ -2407,9 +2320,24 @@ async function verifyAdmin(c: any, next: any) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const admin = await adminService.getAdminUser(userId);
+  let admin = await adminService.getAdminUser(userId);
   if (!admin) {
-    return c.json({ error: 'Admin access required' }, 403);
+    // Auto-provision: if the user profile carries role='admin' they get superadmin access
+    const userProfile = await userService.getUserByUserId(userId);
+    if (userProfile && (userProfile as any).role === 'admin') {
+      try {
+        admin = await adminService.createAdminUser(userId, 'superadmin', userId);
+      } catch {
+        return c.json({ error: 'Admin access required' }, 403);
+      }
+    } else {
+      return c.json({ error: 'Admin access required' }, 403);
+    }
+  }
+
+  // Block deactivated admin accounts immediately
+  if ((admin as any).status === 'inactive') {
+    return c.json({ error: 'Admin account is deactivated' }, 403);
   }
 
   c.set('adminUser', admin);
@@ -2600,90 +2528,6 @@ app.get("/make-server-79198001/admin/users", verifyAuth, verifyAdmin, requirePer
   }
 });
 
-// Support tickets
-app.get('/make-server-79198001/admin/support/stats', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
-  try {
-    const stats = await supportService.getSupportTicketStats();
-    return c.json({ stats });
-  } catch (error) {
-    console.error('Error fetching support stats:', error);
-    return c.json({ error: `Failed to fetch support stats: ${error.message}` }, 500);
-  }
-});
-
-app.get('/make-server-79198001/admin/support/tickets', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
-  try {
-    const tickets = await supportService.listAllSupportTickets();
-    return c.json({ tickets });
-  } catch (error) {
-    console.error('Error fetching support tickets:', error);
-    return c.json({ error: `Failed to fetch support tickets: ${error.message}` }, 500);
-  }
-});
-
-app.get('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('support.view'), async (c) => {
-  try {
-    const ticketId = c.req.param('ticketId');
-    const ticket = await supportService.getSupportTicket(ticketId);
-
-    if (!ticket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket });
-  } catch (error) {
-    console.error('Error fetching support ticket:', error);
-    return c.json({ error: `Failed to fetch support ticket: ${error.message}` }, 500);
-  }
-});
-
-app.patch('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('support.manage'), async (c) => {
-  try {
-    const adminUserId = c.get('userId');
-    const ticketId = c.req.param('ticketId');
-    const body = await c.req.json();
-
-    const ticket = await supportService.updateSupportTicket(ticketId, {
-      status: body.status,
-      priority: body.priority,
-      assignedAdminId: body.assignedAdminId,
-      adminNotes: body.adminNotes,
-    }, adminUserId);
-
-    if (!ticket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket });
-  } catch (error) {
-    console.error('Error updating support ticket:', error);
-    return c.json({ error: `Failed to update support ticket: ${error.message}` }, 500);
-  }
-});
-
-app.post('/make-server-79198001/admin/support/tickets/:ticketId/messages', verifyAuth, verifyAdmin, requirePermission('support.manage'), async (c) => {
-  try {
-    const adminUserId = c.get('userId');
-    const ticketId = c.req.param('ticketId');
-    const body = await c.req.json();
-    const adminUser = await userService.getUserByUserId(adminUserId);
-
-    if (!adminUser) {
-      return c.json({ error: 'Admin profile not found' }, 404);
-    }
-
-    const ticket = await supportService.addAdminReply(ticketId, adminUserId, adminUser.email, body.message);
-    if (!ticket) {
-      return c.json({ error: 'Support ticket not found' }, 404);
-    }
-
-    return c.json({ ticket });
-  } catch (error) {
-    console.error('Error replying to support ticket:', error);
-    return c.json({ error: `Failed to reply to support ticket: ${error.message}` }, 500);
-  }
-});
-
 // Update admin role
 app.put("/make-server-79198001/admin/users/:userId/role", verifyAuth, verifyAdmin, requirePermission('admins.edit'), async (c) => {
   try {
@@ -2700,6 +2544,9 @@ app.put("/make-server-79198001/admin/users/:userId/role", verifyAuth, verifyAdmi
     if (!adminUser) {
       return c.json({ error: 'Admin user not found' }, 404);
     }
+
+    // Sync updated admin role into Supabase Auth metadata immediately
+    await syncAuthUserMetadata(targetUserId, { role: 'admin' }).catch(console.error);
 
     return c.json({ adminUser });
   } catch (error) {
@@ -2942,7 +2789,49 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
       return c.json({ error: 'User not found' }, 404);
     }
 
-    const updatedUser = await userService.updateUser(user.id, body);
+    const { password, metadataOverrides } = buildPasswordChangeUpdate({
+      password: body.password,
+      mustChangePassword: body.mustChangePassword,
+      temporaryPassword: body.temporaryPassword,
+    });
+
+    const profileUpdates = { ...body };
+    delete profileUpdates.password;
+    delete profileUpdates.defaultPassword;
+
+    if (password) {
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(user.userId, {
+        password,
+      });
+
+      if (authUpdateError) {
+        throw authUpdateError;
+      }
+    }
+
+    const updatedUser = await userService.updateUser(user.id, profileUpdates);
+
+    if (updatedUser) {
+      await syncAuthUserMetadata(user.userId, {
+        email: updatedUser.email,
+        firstName: updatedUser.firstName,
+        lastName: updatedUser.lastName,
+        artistName: updatedUser.role === 'artist' ? updatedUser.artistName : undefined,
+        labelName: updatedUser.role === 'partner' ? updatedUser.labelName : undefined,
+        role: updatedUser.role,
+        subscriptionTier: updatedUser.subscriptionTier,
+        ...(Object.keys(metadataOverrides).length > 0 ? {
+          mustChangePassword: metadataOverrides.mustChangePassword ?? undefined,
+          temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
+        } : {}),
+      });
+
+      // Suspend or reinstate in Supabase Auth immediately when isVerified changes
+      if (typeof profileUpdates.isVerified === 'boolean') {
+        const banDuration = profileUpdates.isVerified ? 'none' : '876000h';
+        await supabase.auth.admin.updateUserById(user.userId, { ban_duration: banDuration }).catch(console.error);
+      }
+    }
 
     await adminService.logAdminAction(
       adminUserId,
@@ -4292,6 +4181,507 @@ app.get('/make-server-79198001/admin/payroll/reports', verifyAuth, verifyAdmin, 
   } catch (error) {
     console.error('Error loading payroll reports:', error);
     return c.json({ error: `Failed to load payroll reports: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ==================== LYRICS SERVICE ROUTES ====================
+
+function getSubmitterDisplayName(profile: { artistName?: string; labelName?: string; email: string }) {
+  return profile.artistName || profile.labelName || profile.email.split('@')[0];
+}
+
+async function findLiveTrackWithRelease(trackId: string) {
+  const track = await metadataService.getTrackById(trackId);
+  if (!track) return null;
+  const release = await metadataService.getReleaseById(track.releaseId);
+  if (!release) return null;
+  return { track, release };
+}
+
+// ── Public: search live tracks to attach a lyrics submission/request to ────
+
+app.get('/make-server-79198001/lyrics/search-tracks', async (c) => {
+  try {
+    const query = (c.req.query('query') || '').trim().toLowerCase();
+    const releaseKeys = await kv.getEntriesByPrefix('release:user:');
+    const results: Array<{ trackId: string; title: string; artistName: string; albumName: string; artworkUrl: string; genre?: string; releaseDate?: string }> = [];
+
+    for (const key of releaseKeys) {
+      if (results.length >= 20) break;
+      const releaseId = key?.key?.split(':').pop();
+      if (!releaseId) continue;
+
+      const release = await metadataService.getReleaseById(releaseId);
+      if (!release || release.status !== 'live') continue;
+
+      if (query && !release.title.toLowerCase().includes(query) && !release.primaryArtist.toLowerCase().includes(query)) {
+        continue;
+      }
+
+      const tracks = await metadataService.getReleaseTracks(release.id);
+      for (const track of tracks) {
+        if (results.length >= 20) break;
+        if (query && !release.primaryArtist.toLowerCase().includes(query) && !track.title.toLowerCase().includes(query)) {
+          continue;
+        }
+        results.push({
+          trackId: track.id,
+          title: track.title,
+          artistName: release.primaryArtist,
+          albumName: release.title,
+          artworkUrl: release.artworkUrl,
+          genre: track.genre || release.genre,
+          releaseDate: release.releaseDate,
+        });
+      }
+    }
+
+    return c.json({ tracks: results });
+  } catch (error) {
+    console.error('Error searching tracks for lyrics:', error);
+    return c.json({ error: `Failed to search tracks: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public lyrics catalog (real data, no auth required) ────────────────────
+
+app.get('/make-server-79198001/lyrics/public', async (c) => {
+  try {
+    const sort = c.req.query('sort');
+    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
+
+    if (sort === 'trending') {
+      const lyrics = await lyricsService.getTrendingLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    if (sort === 'latest') {
+      const lyrics = await lyricsService.getLatestLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    const result = await lyricsService.getLyricsPublic({
+      search: c.req.query('search') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      limit,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching public lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/artist/:artistSlug', async (c) => {
+  try {
+    const artistSlug = c.req.param('artistSlug');
+    const result = await lyricsService.getLyricsArtist(artistSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching artist lyrics:', error);
+    return c.json({ error: `Failed to fetch artist lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/album/:albumSlug', async (c) => {
+  try {
+    const albumSlug = c.req.param('albumSlug');
+    const result = await lyricsService.getLyricsAlbum(albumSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching album lyrics:', error);
+    return c.json({ error: `Failed to fetch album lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/:lyricsId', async (c) => {
+  try {
+    const lyricsId = c.req.param('lyricsId');
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+
+    if (!lyrics || !lyrics.is_published || lyrics.verification_status !== 'verified') {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    void lyricsService.incrementLyricsView(lyricsId);
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public (anonymous): submit lyrics or request lyrics for a live track ───
+
+app.post('/make-server-79198001/lyrics/public/submit', async (c) => {
+  try {
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Please choose which song this is for' }, 400);
+    }
+
+    const isRequest = body.mode === 'request';
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim().slice(0, 20000) : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim().slice(0, 2000) : '';
+    const submitterName = typeof body.submitterName === 'string' ? body.submitterName.trim().slice(0, 120) : undefined;
+    const submitterEmail = typeof body.submitterEmail === 'string' ? body.submitterEmail.trim().slice(0, 200) : undefined;
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const found = await findLiveTrackWithRelease(body.trackId);
+    if (!found || found.release.status !== 'live') {
+      return c.json({ error: 'This song is not available for lyrics submissions yet' }, 404);
+    }
+
+    const { track, release } = found;
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: release.primaryArtist,
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Public lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: isRequest ? 'public-request' : 'public-submission',
+      copyright_status: 'review-required',
+      submitter_name: submitterName,
+      submitter_email: submitterEmail,
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting public lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Signed-in user: submit lyrics or request lyrics for one of their tracks ─
+
+app.post('/make-server-79198001/lyrics', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    const isRequest = body.isRequest === true;
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim() : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim() : '';
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+    if (!release || release.userId !== userId) {
+      return c.json({ error: 'Unauthorized: You do not own this track' }, 403);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      artist_id: profile.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: getSubmitterDisplayName(profile),
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: 'artist-submission',
+      copyright_status: 'review-required',
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Signed-in user: list their own lyrics submissions/requests
+app.get('/make-server-79198001/lyrics/mine', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const result = await lyricsService.getLyricsByArtistId(profile.id, {
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching your lyrics:', error);
+    return c.json({ error: `Failed to fetch your lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    const updates: Record<string, any> = {};
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) updates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.language === 'string' && body.language.trim()) updates.lyrics_language = body.language.trim();
+    if (typeof body.genre === 'string' && body.genre.trim()) updates.genre = body.genre.trim();
+
+    // Editing previously published/verified content sends it back for admin review.
+    if (lyrics.is_published || lyrics.verification_status === 'verified') {
+      updates.is_published = false;
+      updates.verification_status = 'pending';
+    }
+
+    const updatedLyrics = await lyricsService.updateLyrics(lyricsId, updates);
+
+    return c.json({ lyrics: updatedLyrics });
+  } catch (error) {
+    console.error('Error updating lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    if (lyrics.is_published) {
+      return c.json({ error: 'This lyrics entry is already published. Contact support to remove it.' }, 400);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Admin: manage all lyrics submissions and requests ───────────────────────
+
+app.get('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.view'), async (c) => {
+  try {
+    const isPublishedParam = c.req.query('isPublished');
+    const result = await lyricsService.getLyricsAdmin({
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      artistName: c.req.query('artistName') || undefined,
+      search: c.req.query('search') || undefined,
+      isPublished: isPublishedParam === 'true' ? true : isPublishedParam === 'false' ? false : undefined,
+      limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching admin lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Admin: directly add lyrics for any track (import / on behalf of an artist)
+app.post('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    if (!body.lyricsText || typeof body.lyricsText !== 'string' || !body.lyricsText.trim()) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release?.id,
+      title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : track.title,
+      artist_name: typeof body.artistName === 'string' && body.artistName.trim() ? body.artistName.trim() : (release?.primaryArtist || 'Unknown artist'),
+      album_name: typeof body.albumName === 'string' && body.albumName.trim() ? body.albumName.trim() : release?.title,
+      lyrics_text: body.lyricsText.trim(),
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release?.upc,
+      genre: typeof body.genre === 'string' && body.genre.trim() ? body.genre.trim() : (track.genre || release?.genre),
+      release_date: release?.releaseDate,
+      artwork_url: release?.artworkUrl,
+      source: 'admin-import',
+      copyright_status: 'cleared',
+    });
+
+    await adminService.logAdminAction(adminUserId, 'create', 'lyrics', lyrics?.id || track.id, { trackId: track.id });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error creating admin lyrics:', error);
+    return c.json({ error: `Failed to create lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    let lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    if (body.verificationStatus === 'verified') {
+      lyrics = await lyricsService.verifyLyrics(lyricsId);
+    } else if (body.verificationStatus === 'rejected') {
+      lyrics = await lyricsService.rejectLyrics(lyricsId);
+    }
+
+    if (body.isPublished === true) {
+      lyrics = await lyricsService.publishLyrics(lyricsId);
+    } else if (body.isPublished === false) {
+      lyrics = await lyricsService.unpublishLyrics(lyricsId);
+    }
+
+    const fieldUpdates: Record<string, any> = {};
+    if (typeof body.title === 'string' && body.title.trim()) fieldUpdates.title = body.title.trim();
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) fieldUpdates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.albumName === 'string') fieldUpdates.album_name = body.albumName.trim();
+    if (typeof body.genre === 'string') fieldUpdates.genre = body.genre.trim();
+    if (typeof body.language === 'string' && body.language.trim()) fieldUpdates.lyrics_language = body.language.trim();
+    if (typeof body.artworkUrl === 'string') fieldUpdates.artwork_url = body.artworkUrl.trim();
+    if (typeof body.copyrightStatus === 'string') fieldUpdates.copyright_status = body.copyrightStatus;
+
+    if (Object.keys(fieldUpdates).length > 0) {
+      lyrics = await lyricsService.updateLyrics(lyricsId, fieldUpdates);
+    }
+
+    await adminService.logAdminAction(adminUserId, 'update', 'lyrics', lyricsId, { changes: body });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error updating admin lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.delete'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    await adminService.logAdminAction(adminUserId, 'delete', 'lyrics', lyricsId, { lyrics });
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting admin lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 

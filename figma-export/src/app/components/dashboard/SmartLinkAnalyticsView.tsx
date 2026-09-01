@@ -591,7 +591,7 @@ export function SmartLinkAnalyticsView() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-white truncate">{link.title}</p>
-                        <p className="text-xs text-[#666]">amtdistro.link/{link.slug}</p>
+                        <p className="text-xs text-[#666]">gwmusic.com.ng/s/{link.slug}</p>
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-bold text-white">{formatNumber(link.clicks)}</p>

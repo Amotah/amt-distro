@@ -35,6 +35,10 @@ import {
   formatNumber,
   type ClickEvent,
 } from '../utils/smartLinkAlgorithms';
+import {
+  buildSmartLinkUrl,
+  normalizeSmartLinkSlug,
+} from '../utils/smartLinkUrl';
 
 interface CreateSmartLinkProps {
   onBack: () => void;
@@ -101,10 +105,10 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
     setFormData({ ...formData, customSlug: slug || generateShortId() });
   };
 
-  const generatedLink = `amtdistro.link/${formData.customSlug || 'your-music'}`;
+  const generatedLink = buildSmartLinkUrl(formData.customSlug || 'your-music');
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(`https://${generatedLink}`);
+    navigator.clipboard.writeText(generatedLink);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -114,7 +118,7 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
     if (step === 3 && canvasRef.current) {
       QRCode.toCanvas(
         canvasRef.current,
-        `https://${generatedLink}`,
+        generatedLink,
         {
           width: 256,
           margin: 2,
@@ -128,7 +132,7 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
         }
       );
       
-      QRCode.toDataURL(`https://${generatedLink}`, {
+      QRCode.toDataURL(generatedLink, {
         width: 512,
         margin: 2,
       }).then(setQrCodeUrl);
@@ -263,7 +267,7 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
                 <div className="flex gap-2 mt-2">
                   <div className="flex-1 relative">
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">
-                      amtdistro.link/
+                      gwmusic.com.ng/s/
                     </span>
                     <Input
                       id="customSlug"
@@ -322,7 +326,7 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
                   Your Smart Link Preview
                 </h3>
                 <code className="block bg-white px-3 py-2 rounded text-xs sm:text-sm break-all">
-                  https://{generatedLink}
+                  {generatedLink}
                 </code>
               </div>
             </div>
@@ -396,7 +400,7 @@ export function CreateSmartLink({ onBack }: CreateSmartLinkProps) {
                   <div className="flex flex-col sm:flex-row gap-2">
                     <Input
                       type="text"
-                      value={`https://${generatedLink}`}
+                      value={generatedLink}
                       readOnly
                       className="flex-1 bg-white text-sm"
                     />

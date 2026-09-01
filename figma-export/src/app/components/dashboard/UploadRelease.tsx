@@ -15,6 +15,7 @@ import { getArtistDisplayName } from '../../utils/artist-management';
 import { getEffectiveDashboardMode } from '../../utils/dashboard-access';
 import { getCurrentUserProfile } from '../../utils/user-api';
 import { initializePaystackPayment, getReleaseFee } from '../../utils/payment-api';
+import { submitLyrics } from '../../utils/lyrics-api';
 import { PROMOTION_PLANS } from './PromotionDashboard';
 import {
   Upload,
@@ -982,6 +983,14 @@ export function UploadRelease() {
               existingAudioPath: newTrack.audioFilePath,
               existingAudioName: newTrack.audioFilePath,
             };
+
+            if (track.lyrics?.trim()) {
+              try {
+                await submitLyrics({ trackId: newTrack.id, lyricsText: track.lyrics.trim(), language: normalizedLanguage });
+              } catch {
+                // Non-blocking: lyrics can still be submitted later from the Lyrics dashboard page.
+              }
+            }
           }
         }
 
@@ -1041,6 +1050,14 @@ export function UploadRelease() {
             existingAudioPath: newTrack.audioFilePath,
             existingAudioName: newTrack.audioFilePath,
           };
+
+          if (track.lyrics?.trim()) {
+            try {
+              await submitLyrics({ trackId: newTrack.id, lyricsText: track.lyrics.trim(), language: normalizedLanguage });
+            } catch {
+              // Non-blocking: lyrics can still be submitted later from the Lyrics dashboard page.
+            }
+          }
         }
 
         const orderedTrackIds = nextTrackDrafts.map((track) => track.id).filter(Boolean) as string[];

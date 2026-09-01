@@ -35,9 +35,12 @@ import QRCode from 'qrcode';
 import {
   generateSlug,
   generateShortId,
-  validatePlatformUrl,
   createClickEvent,
 } from '../../utils/smartLinkAlgorithms';
+import {
+  buildSmartLinkUrl,
+  normalizeSmartLinkSlug,
+} from '../../utils/smartLinkUrl';
 import {
   loadSmartLinkClickEvents,
   loadSmartLinks,
@@ -118,7 +121,7 @@ export function SmartLinksView() {
   });
 
   /* helpers -------------------------------------------------------- */
-  const generatedLink = `amtdistro.link/${form.customSlug || 'your-music'}`;
+  const generatedLink = buildSmartLinkUrl(form.customSlug || 'your-music');
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -160,6 +163,21 @@ export function SmartLinksView() {
       setUrlErrors(errors);
       return;
     }
+
+    const normalizedSlug = normalizeSmartLinkSlug(form.customSlug.trim() || generateShortId());
+    if (!normalizedSlug) {
+      setUrlErrors((prev) => ({ ...prev, customSlug: 'Enter a valid slug using letters, numbers, and hyphens only.' }));
+      setStep(1);
+      return;
+    }
+
+    const slugTaken = links.some((entry) => entry.slug.toLowerCase() === normalizedSlug.toLowerCase());
+    if (slugTaken) {
+      setUrlErrors((prev) => ({ ...prev, customSlug: 'This slug is already in use. Choose another one.' }));
+      setStep(1);
+      return;
+    }
+
     setUrlErrors({});
 
     const newLink: SmartLink = {
@@ -167,7 +185,7 @@ export function SmartLinksView() {
       title: form.linkTitle.trim(),
       artistName: form.artistName.trim(),
       releaseTitle: form.releaseTitle.trim(),
-      slug: form.customSlug.trim() || generateShortId(),
+      slug: normalizedSlug,
       platforms: Object.fromEntries(Object.entries(form.platforms).filter(([, v]) => v)),
       enableGeoRouting: form.enableGeoRouting,
       enableDeviceRouting: form.enableDeviceRouting,
@@ -264,7 +282,7 @@ export function SmartLinksView() {
   useEffect(() => {
     const slug = view === 'create' ? form.customSlug : selectedLink?.slug;
     if ((view === 'create' && step === 3) || (view === 'detail' && showQr)) {
-      const url = `https://amtdistro.link/${slug}`;
+      const url = buildSmartLinkUrl(slug);
       if (canvasRef.current) {
         QRCode.toCanvas(canvasRef.current, url, {
           width: 220,
@@ -369,7 +387,7 @@ export function SmartLinksView() {
                   </div>
                   <div className="min-w-0">
                     <p className="font-semibold text-white truncate">{link.title}</p>
-                    <p className="text-xs text-[#B3B3B3] truncate">amtdistro.link/{link.slug}</p>
+                    <p className="text-xs text-[#B3B3B3] truncate">gwmusic.com.ng/s/{link.slug}</p>
                   </div>
                 </div>
 
@@ -473,16 +491,29 @@ export function SmartLinksView() {
                 <Label className="text-[#B3B3B3]">Custom Slug *</Label>
                 <div className="flex gap-2 mt-2">
                   <div className="flex-1 relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-sm">amtdistro.link/</span>
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[#666] text-sm">gwmusic.com.ng/s/</span>
                     <Input
                       placeholder="your-music"
                       value={form.customSlug}
-                      onChange={(e) => setForm((f) => ({ ...f, customSlug: e.target.value }))}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setForm((f) => ({ ...f, customSlug: value }));
+                        if (urlErrors.customSlug) {
+                          setUrlErrors((prev) => {
+                            const next = { ...prev };
+                            delete next.customSlug;
+                            return next;
+                          });
+                        }
+                      }}
                       className="pl-32 bg-[#0A0A0A] border-[#FF6B00]/20 text-white placeholder:text-[#666]"
                     />
                   </div>
                   <Button variant="outline" onClick={handleAutoSlug} className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10 shrink-0">Generate</Button>
                 </div>
+                {urlErrors.customSlug && (
+                  <p className="text-xs text-red-400 mt-1">{urlErrors.customSlug}</p>
+                )}
               </div>
 
               {/* Routing options */}
@@ -507,7 +538,7 @@ export function SmartLinksView() {
               {/* Preview */}
               <div className="bg-[#0A0A0A] border border-[#FF6B00]/20 rounded-lg p-4">
                 <p className="text-xs text-[#B3B3B3] mb-1 flex items-center gap-2"><Link2 className="w-4 h-4 text-[#FF6B00]" /> Preview</p>
-                <code className="text-sm text-[#FFD600] break-all">https://{generatedLink}</code>
+                <code className="text-sm text-[#FFD600] break-all">{generatedLink}</code>
               </div>
 
               <Button className="w-full bg-[#FF6B00] hover:bg-[#FF6B00]/90 text-white" onClick={() => setStep(2)}>
@@ -576,10 +607,10 @@ export function SmartLinksView() {
               <div className="flex gap-2">
                 <Input
                   readOnly
-                  value={`https://amtdistro.link/${selectedLink.slug}`}
+                  value={buildSmartLinkUrl(selectedLink.slug)}
                   className="flex-1 bg-[#161616] border-[#FF6B00]/15 text-[#FFD600] text-sm"
                 />
-                <Button variant="outline" onClick={() => handleCopy(`https://amtdistro.link/${selectedLink.slug}`)} className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10">
+                <Button variant="outline" onClick={() => handleCopy(buildSmartLinkUrl(selectedLink.slug))} className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10">
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                 </Button>
                 <Button variant="outline" onClick={() => setShowQr(!showQr)} className="border-[#FF6B00]/30 text-[#FF6B00] hover:bg-[#FF6B00]/10">
@@ -640,7 +671,7 @@ export function SmartLinksView() {
 
   /* ---------- DETAIL VIEW ----------------------------------------- */
   if (view === 'detail' && selectedLink) {
-    const linkUrl = `https://amtdistro.link/${selectedLink.slug}`;
+    const linkUrl = buildSmartLinkUrl(selectedLink.slug);
     return (
       <div className="p-4 sm:p-6 lg:p-8 space-y-6">
         {/* Back */}

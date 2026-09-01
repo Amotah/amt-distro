@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Quote, Star } from 'lucide-react';
+import { Quote, Star } from 'lucide-react';
 import { Card } from './ui/card';
+import { Carousel, CarouselContent, CarouselItem, CarouselNext, CarouselPrevious } from './ui/carousel';
 import { useLanguage } from '../utils/i18n';
 
 const testimonials = [
@@ -11,6 +11,7 @@ const testimonials = [
     metric: '2.1M streams in 8 months',
     initials: 'TA',
     city: 'Lagos, NG',
+    surface: 'Spotify + Apple Music',
   },
   {
     quote: 'We moved our label roster here because the workflow is simpler. Artist onboarding, payments, and support all feel built for an actual African music business.',
@@ -19,6 +20,7 @@ const testimonials = [
     metric: '14 artists managed',
     initials: 'MK',
     city: 'Accra, GH',
+    surface: 'Label Operations',
   },
   {
     quote: 'The paid artist plan gave me structure. I can release consistently, track performance, and stop guessing where the momentum is coming from.',
@@ -27,6 +29,7 @@ const testimonials = [
     metric: '4 releases delivered this year',
     initials: 'JR',
     city: 'Abuja, NG',
+    surface: 'Release Strategy',
   },
   {
     quote: 'The platform feels direct. No clutter, no vague pricing, no confusion about what happens after upload. That matters when you are scaling a catalog.',
@@ -35,136 +38,79 @@ const testimonials = [
     metric: '120+ tracks distributed',
     initials: 'AN',
     city: 'Nairobi, KE',
+    surface: 'Catalog Operations',
   },
 ];
 
 export function Testimonials() {
   const { t } = useLanguage();
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  useEffect(() => {
-    const intervalId = window.setInterval(() => {
-      setActiveIndex((current) => (current + 1) % testimonials.length);
-    }, 5000);
-
-    return () => window.clearInterval(intervalId);
-  }, []);
-
-  const goToPrevious = () => {
-    setActiveIndex((current) => (current - 1 + testimonials.length) % testimonials.length);
-  };
-
-  const goToNext = () => {
-    setActiveIndex((current) => (current + 1) % testimonials.length);
-  };
-
-  const activeItem = testimonials[activeIndex];
 
   return (
-    <section className="relative overflow-hidden bg-gradient-to-b from-[#0A0A0A] via-[#050505] to-[#0A0A0A] px-4 py-16 sm:px-6 sm:py-20 lg:px-8 lg:py-24">
-      {/* Background Effects */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -bottom-32 -left-32 w-96 h-96 bg-[#FF6B00]/10 rounded-full mix-blend-multiply filter blur-3xl opacity-20" />
-        <div className="absolute top-1/3 -right-32 w-96 h-96 bg-[#FFD600]/10 rounded-full mix-blend-multiply filter blur-3xl opacity-15" />
-      </div>
-
-      <div className="relative mx-auto w-full max-w-7xl">
-        {/* Section Header */}
-        <div className="mb-16">
-          <h2 className="max-w-4xl text-4xl font-black leading-tight text-white lg:text-5xl mb-4">
-            {t('testimonials.title', 'What people are saying about us.')}
-          </h2>
-          <p className="text-xl text-white/70 max-w-2xl">
-            {t('testimonials.subtitle', 'Join hundreds of artists and labels who trust AMT DISTRO with their music.')}
-          </p>
+    <section className="relative overflow-hidden bg-[radial-gradient(circle_at_top_left,_rgba(255,107,0,0.08),_transparent_35%),linear-gradient(180deg,#0f0d0a_0%,#0a0a0a_50%,#0f0d0a_100%)] px-4 py-14 sm:px-6 sm:py-16 lg:px-8 lg:py-18">
+      <div className="mx-auto w-full max-w-7xl">
+        <div className="mb-12">
+          <div>
+            <p className="landing-section-kicker">Proof</p>
+            <div className="mb-4 inline-flex rounded-full border border-[#FF6B00]/30 bg-[#FF6B00]/8 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[#FFD600]">
+              {t('testimonials.badge', 'Testimonials')}
+            </div>
+            <h2 className="max-w-3xl text-2xl font-bold leading-tight text-white sm:text-[1.75rem]">{t('testimonials.title', 'Trusted by artists and labels who need release momentum, not extra friction.')}</h2>
+            <p className="mt-3 max-w-xl text-sm leading-6 text-[#B3B3B3]">
+              {t('testimonials.subtitle', 'A fast-moving snapshot of how artists and labels are using the platform in the real world.')}
+            </p>
+          </div>
         </div>
 
-        {/* Testimonial Carousel */}
-        <div className="rounded-3xl border border-[#FF6B00]/20 bg-gradient-to-br from-[#0D0D0D]/80 to-[#050505]/90 p-8 backdrop-blur-sm overflow-hidden">
-          {/* Header Controls */}
-          <div className="mb-8 flex items-center justify-between pb-8 border-b border-[#FF6B00]/20">
-            <div className="text-sm font-semibold text-[#FF6B00] uppercase tracking-widest">
-              {activeIndex + 1} / {testimonials.length}
-            </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={goToPrevious}
-                className="p-2 rounded-lg border border-[#FF6B00]/30 bg-[#FF6B00]/10 text-[#FF6B00] hover:bg-[#FF6B00]/20 hover:border-[#FFD600]/50 transition-all duration-300"
-                aria-label="Previous testimonial"
-              >
-                <ChevronLeft className="h-5 w-5" />
-              </button>
-              <button
-                type="button"
-                onClick={goToNext}
-                className="p-2 rounded-lg border border-[#FF6B00]/30 bg-[#FF6B00]/10 text-[#FF6B00] hover:bg-[#FF6B00]/20 hover:border-[#FFD600]/50 transition-all duration-300"
-                aria-label="Next testimonial"
-              >
-                <ChevronRight className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
+        <Carousel opts={{ align: 'start', loop: true }} className="landing-stagger-item">
+          <CarouselContent>
+            {testimonials.map((item) => (
+              <CarouselItem key={item.name} className="md:basis-1/2 xl:basis-1/3">
+                <Card
+                  className="landing-testimonial-card group relative flex min-h-[280px] flex-col justify-between overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#1a1410]/80 to-[#0f0d0a]/80 p-6 text-white shadow-[0_8px_24px_rgba(0,0,0,0.24)] transition-all duration-300 hover:border-white/20 hover:shadow-[0_24px_48px_rgba(255,107,0,0.12)]"
+                >
+                  {/* Premium background glow on hover */}
+                  <div className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 pointer-events-none">
+                    <div className="absolute inset-0 bg-gradient-to-br from-[#FF6B00]/0 to-[#FF6B00]/5" />
+                    <div className="absolute top-0 right-0 w-32 h-32 bg-[#FF6B00]/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  </div>
 
-          {/* Testimonial Card */}
-          <div
-            key={activeItem.name}
-            className="relative flex min-h-[340px] flex-col justify-between rounded-2xl border border-[#FF6B00]/20 bg-gradient-to-br from-[#0D0D0D]/60 to-[#050505]/80 p-8 overflow-hidden"
-          >
-            {/* Decorative Gradient */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#FF6B00]/5 to-transparent pointer-events-none" />
-            <div className="absolute top-0 right-0 w-48 h-48 bg-[#FF6B00]/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 -translate-y-1/2 translate-x-1/2 transition-opacity duration-500" />
+                  <div className="relative z-10">
+                    <div className="mb-4 flex items-center justify-between gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#FF6B00] to-[#FFD600] text-sm font-bold text-white shadow-[0_4px_12px_rgba(255,107,0,0.4)] transition-transform duration-300 group-hover:scale-110">
+                        {item.initials}
+                      </div>
+                      <div className="flex items-center gap-1 text-[#FFD600]">
+                        {Array.from({ length: 5 }).map((_, starIndex) => (
+                          <Star key={starIndex} className="h-3.5 w-3.5 fill-current" />
+                        ))}
+                      </div>
+                    </div>
+                    <Quote className="mb-4 h-5 w-5 text-[#FF6B00]/70 transition-colors duration-300 group-hover:text-[#FF6B00]" />
+                    <p className="text-sm leading-7 text-white/85 transition-colors duration-300 group-hover:text-white">{item.quote}</p>
+                  </div>
 
-            <div className="relative z-10">
-              {/* Top Section */}
-              <div className="mb-6 flex items-center justify-between">
-                <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#FFD600] text-sm font-bold text-white shadow-lg shadow-[#FF6B00]/40">
-                  {activeItem.initials}
-                </div>
-                <div className="flex gap-1">
-                  {Array.from({ length: 5 }).map((_, idx) => (
-                    <Star key={idx} className="h-4 w-4 fill-[#FFD600] text-[#FFD600]" />
-                  ))}
-                </div>
-              </div>
-
-              {/* Quote */}
-              <Quote className="mb-4 h-6 w-6 text-[#FF6B00]/60" />
-              <p className="text-lg leading-8 text-white/90 mb-4">{activeItem.quote}</p>
-            </div>
-
-            {/* Bottom Section */}
-            <div className="relative z-10 border-t border-[#FF6B00]/20 pt-6">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <div className="text-base font-bold text-white">{activeItem.name}</div>
-                  <div className="text-sm text-white/70 mt-1">{activeItem.role}</div>
-                  <div className="mt-2 text-xs uppercase tracking-widest text-[#FF6B00]">{activeItem.city}</div>
-                </div>
-                <div className="rounded-lg border border-[#FF6B00]/30 bg-[#FF6B00]/10 px-3 py-2 text-xs font-semibold text-[#FFD600] text-center whitespace-nowrap">
-                  {activeItem.metric}
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Dot Navigation */}
-          <div className="mt-8 flex items-center justify-center gap-2">
-            {testimonials.map((item, index) => (
-              <button
-                key={item.name}
-                type="button"
-                aria-label={`Go to testimonial ${index + 1}`}
-                onClick={() => setActiveIndex(index)}
-                className={`rounded-full transition-all duration-300 ${
-                  index === activeIndex
-                    ? 'w-8 h-2 bg-gradient-to-r from-[#FF6B00] to-[#FFD600]'
-                    : 'w-2 h-2 bg-white/30 hover:bg-white/60'
-                }`}
-              />
+                  <div className="relative z-10 mt-6 border-t border-white/10 pt-5 transition-colors duration-300 group-hover:border-white/20">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-white">{item.name}</div>
+                        <div className="text-xs text-[#B3B3B3]">{item.role}</div>
+                        <div className="mt-1.5 text-[11px] uppercase tracking-[0.16em] text-[#8D8D8D]">{item.city}</div>
+                      </div>
+                      <div className="rounded-full border border-[#FF6B00]/30 bg-[#FF6B00]/8 px-3 py-1 text-[10px] font-medium text-[#FFD600] whitespace-nowrap transition-colors duration-300 group-hover:border-[#FF6B00]/50 group-hover:bg-[#FF6B00]/12">
+                        {item.metric}
+                      </div>
+                    </div>
+                    <div className="mt-2.5 text-[10px] uppercase tracking-[0.16em] text-[#8D8D8D]">{item.surface}</div>
+                  </div>
+                </Card>
+              </CarouselItem>
             ))}
+          </CarouselContent>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <CarouselPrevious className="static h-9 w-9 translate-y-0" />
+            <CarouselNext className="static h-9 w-9 translate-y-0" />
           </div>
-        </div>
+        </Carousel>
       </div>
     </section>
   );

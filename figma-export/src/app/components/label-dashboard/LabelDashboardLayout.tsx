@@ -76,6 +76,7 @@ const navItems = [
     ]
   },
   { icon: Rocket, label: 'Promotion', path: '/label-dashboard/promotion' },
+  { icon: FileText, label: 'Lyrics', path: '/label-dashboard/lyrics' },
   { icon: Settings, label: 'Settings', path: '/label-dashboard/settings' },
 ];
 

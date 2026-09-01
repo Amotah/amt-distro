@@ -21,8 +21,10 @@ import * as initAdmin from "./init-admin.tsx";
 import * as payrollService from "./payroll-service.tsx";
 import * as accountingService from "./accounting-service.tsx";
 import * as smartLinksService from "./smart-links-service.tsx";
-import * as supportService from "./support-service.tsx";
-import * as emailService from "./email-service.tsx";
+import * as listenerService from "./listener-service.tsx";
+import * as releaseDSPService from "./release-dsp-service.tsx";
+import * as lyricsService from "./lyrics-service.tsx";
+import { buildPasswordChangeUpdate } from './password-update.ts';
 
 const PAYSTACK_PLAN_PRICING = {
   artist: {
@@ -144,6 +146,33 @@ async function verifyAuth(c: any, next: any) {
   c.set('userId', user.id);
   c.set('userEmail', user.email);
   await next();
+}
+
+// JWT-only auth for routes that must run before a user profile exists (e.g. profile creation)
+async function verifyAuthOnly(c: any, next: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return c.json({ error: 'Unauthorized: No token provided' }, 401);
+  }
+
+  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
+  if (error || !user) {
+    return c.json({ error: 'Unauthorized: Invalid token' }, 401);
+  }
+
+  c.set('userId', user.id);
+  c.set('userEmail', user.email);
+  await next();
+}
+
+async function getOptionalAuthUserId(c: any) {
+  const accessToken = c.req.header('Authorization')?.split(' ')[1];
+  if (!accessToken) {
+    return null;
+  }
+
+  const { data: { user } } = await supabase.auth.getUser(accessToken);
+  return user?.id || null;
 }
 
 async function syncAuthUserMetadata(userId: string, updates: {
@@ -747,6 +776,70 @@ app.get('/make-server-79198001/analytics/catalog-performance', verifyAuth, async
   }
 });
 
+app.get('/make-server-79198001/listener/catalog', async (c) => {
+  try {
+    const catalog = await listenerService.getListenerCatalog();
+    return c.json(catalog);
+  } catch (error) {
+    console.error('Error loading listener catalog:', error);
+    return c.json({ error: `Failed to load listener catalog: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.post('/make-server-79198001/listener/events', async (c) => {
+  try {
+    const listenerUserId = await getOptionalAuthUserId(c);
+    const body = await c.req.json();
+
+    if (typeof body.trackId !== 'string' || typeof body.releaseId !== 'string' || typeof body.eventType !== 'string' || typeof body.deviceFingerprint !== 'string') {
+      return c.json({ error: 'trackId, releaseId, eventType, and deviceFingerprint are required.' }, 400);
+    }
+
+    const result = await listenerService.recordListenerEvent({
+      listenerUserId,
+      trackId: body.trackId,
+      releaseId: body.releaseId,
+      eventType: body.eventType,
+      listenedSeconds: Number(body.listenedSeconds || 0),
+      completionRate: Number(body.completionRate || 0),
+      sessionId: typeof body.sessionId === 'string' ? body.sessionId : undefined,
+      deviceFingerprint: body.deviceFingerprint,
+      sourcePlatform: typeof body.sourcePlatform === 'string' ? body.sourcePlatform : 'web',
+      country: typeof body.country === 'string' ? body.country : undefined,
+      deviceType: typeof body.deviceType === 'string' ? body.deviceType : undefined,
+      artistName: typeof body.artistName === 'string' ? body.artistName : undefined,
+      metadata: body.metadata && typeof body.metadata === 'object' ? body.metadata : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error recording listener event:', error);
+    return c.json({ error: `Failed to record listener event: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/listener/summary', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const summary = await listenerService.getListenerSummary(userId);
+    return c.json(summary);
+  } catch (error) {
+    console.error('Error loading listener summary:', error);
+    return c.json({ error: `Failed to load listener summary: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/listener/artist-monetization', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const summary = await listenerService.getArtistMonetizationSummary(userId);
+    return c.json({ summary });
+  } catch (error) {
+    console.error('Error loading listener monetization summary:', error);
+    return c.json({ error: `Failed to load listener monetization summary: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
 app.post('/make-server-79198001/payments/payout/request', verifyAuth, async (c) => {
   try {
     const userId = c.get('userId');
@@ -799,7 +892,7 @@ app.post('/make-server-79198001/payments/paystack/webhook', async (c) => {
 });
 
 // Create artist profile
-app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/artist", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -846,7 +939,7 @@ app.post("/make-server-79198001/users/artist", verifyAuth, async (c) => {
 });
 
 // Create label profile
-app.post("/make-server-79198001/users/label", verifyAuth, async (c) => {
+app.post("/make-server-79198001/users/label", verifyAuthOnly, async (c) => {
   try {
     const userId = c.get('userId');
     const body = await c.req.json();
@@ -1060,6 +1153,43 @@ app.get("/make-server-79198001/users/me", verifyAuth, async (c) => {
   } catch (error) {
     console.error('Error fetching user profile:', error);
     return c.json({ error: `Failed to fetch user profile: ${error.message}` }, 500);
+  }
+});
+
+// /users/profile — alias for /users/me (GET)
+app.get("/make-server-79198001/users/profile", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const user = await userService.getUserByUserId(userId);
+    if (!user) return c.json({ error: 'User profile not found' }, 404);
+    const permissions = userService.getUserPermissions(user);
+    return c.json({ user, permissions });
+  } catch (error) {
+    return c.json({ error: `Failed to fetch user profile: ${error.message}` }, 500);
+  }
+});
+
+// /users/profile — alias for /users/me (PUT)
+app.put("/make-server-79198001/users/profile", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+    const user = await userService.getUserByUserId(userId);
+    if (!user) return c.json({ error: 'User profile not found' }, 404);
+    const updatedUser = await userService.updateUser(user.id, body);
+    await syncAuthUserMetadata(user.userId, {
+      email: updatedUser?.email,
+      firstName: updatedUser?.firstName,
+      lastName: updatedUser?.lastName,
+      artistName: updatedUser?.role === 'artist' ? updatedUser.artistName : undefined,
+      labelName: updatedUser?.role === 'partner' ? updatedUser.labelName : undefined,
+      role: updatedUser?.role,
+      subscriptionTier: updatedUser?.subscriptionTier,
+    });
+    const permissions = userService.getUserPermissions(updatedUser!);
+    return c.json({ user: updatedUser, permissions });
+  } catch (error) {
+    return c.json({ error: `Failed to update user profile: ${error.message}` }, 500);
   }
 });
 
@@ -2363,13 +2493,24 @@ async function verifyAdmin(c: any, next: any) {
     return c.json({ error: 'Unauthorized' }, 401);
   }
 
-  const admin = await adminService.getAdminUser(userId);
+  let admin = await adminService.getAdminUser(userId);
   if (!admin) {
-    return c.json({ error: 'Admin access required' }, 403);
+    // Auto-provision: if the user profile carries role='admin' they get superadmin access
+    const userProfile = await userService.getUserByUserId(userId);
+    if (userProfile && (userProfile as any).role === 'admin') {
+      try {
+        admin = await adminService.createAdminUser(userId, 'superadmin', userId);
+      } catch {
+        return c.json({ error: 'Admin access required' }, 403);
+      }
+    } else {
+      return c.json({ error: 'Admin access required' }, 403);
+    }
   }
 
-  if (!adminService.isAdminActive(admin)) {
-    return c.json({ error: 'Admin account is inactive' }, 403);
+  // Block deactivated admin accounts immediately
+  if ((admin as any).status === 'inactive') {
+    return c.json({ error: 'Admin account is deactivated' }, 403);
   }
 
   c.set('adminUser', admin);
@@ -2576,6 +2717,9 @@ app.put("/make-server-79198001/admin/users/:userId/role", verifyAuth, verifyAdmi
     if (!adminUser) {
       return c.json({ error: 'Admin user not found' }, 404);
     }
+
+    // Sync new admin role into Supabase Auth metadata so it takes effect immediately
+    await syncAuthUserMetadata(targetUserId, { role: 'admin' }).catch(console.error);
 
     return c.json({ adminUser });
   } catch (error) {
@@ -3594,9 +3738,28 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
       return c.json({ error: 'User not found' }, 404);
     }
 
-    const updatedUser = await userService.updateUser(user.id, body);
+    const { password, metadataOverrides } = buildPasswordChangeUpdate({
+      password: body.password,
+      mustChangePassword: body.mustChangePassword,
+      temporaryPassword: body.temporaryPassword,
+    });
 
-    // Sync Supabase Auth metadata so the role change is reflected on next login
+    const profileUpdates = { ...body };
+    delete profileUpdates.password;
+    delete profileUpdates.defaultPassword;
+
+    if (password) {
+      const { error: authUpdateError } = await supabase.auth.admin.updateUserById(user.userId, {
+        password,
+      });
+
+      if (authUpdateError) {
+        throw authUpdateError;
+      }
+    }
+
+    const updatedUser = await userService.updateUser(user.id, profileUpdates);
+
     if (updatedUser) {
       await syncAuthUserMetadata(user.userId, {
         email: updatedUser.email,
@@ -3606,7 +3769,17 @@ app.put("/make-server-79198001/admin/users/:userId", verifyAuth, verifyAdmin, re
         labelName: updatedUser.role === 'partner' ? updatedUser.labelName : undefined,
         role: updatedUser.role,
         subscriptionTier: updatedUser.subscriptionTier,
+        ...(Object.keys(metadataOverrides).length > 0 ? {
+          mustChangePassword: metadataOverrides.mustChangePassword ?? undefined,
+          temporaryPassword: metadataOverrides.temporaryPassword ?? undefined,
+        } : {}),
       });
+
+      // Suspend or reinstate in Supabase Auth immediately when isVerified changes
+      if (typeof profileUpdates.isVerified === 'boolean') {
+        const banDuration = profileUpdates.isVerified ? 'none' : '876000h';
+        await supabase.auth.admin.updateUserById(user.userId, { ban_duration: banDuration }).catch(console.error);
+      }
     }
 
     await adminService.logAdminAction(
@@ -4823,28 +4996,6 @@ app.post('/make-server-79198001/admin/accounting/auto-entries/generate', verifyA
   }
 });
 
-// ==================== ACCOUNTING REPORTS ====================
-
-app.post('/make-server-79198001/admin/accounting/sync-entries', verifyAuth, verifyAdmin, requirePermission('payments.approve'), async (c) => {
-  try {
-    const actorId = c.get('userId') as string;
-    const result = await accountingService.generateAutoEntries(actorId);
-    
-    await adminService.logAdminAction(actorId, 'sync', 'accounting-entries', 'batch', {
-      entriesCreated: result.created,
-    });
-
-    return c.json({ 
-      success: true, 
-      entriesCreated: result.created, 
-      message: `${result.created} accounting entries synchronized` 
-    });
-  } catch (error) {
-    console.error('Error syncing accounting entries:', error);
-    return c.json({ error: `Failed to sync accounting entries: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
 // ═══════════════════════════════════════════════════════════════════════════
 // ADMIN SECURITY PANEL ENDPOINTS
 // ═══════════════════════════════════════════════════════════════════════════
@@ -4887,7 +5038,7 @@ app.post('/make-server-79198001/admin/security/admins', verifyAuth, verifyAdmin,
     }
     if (!targetUser) return c.json({ error: `No user with email ${email}. They must register first.` }, 404);
 
-    const uid = targetUser.userId || targetUser.id;
+    const uid = targetUser.id || targetUser.userId;
     const admin = await adminService.createAdminUser(uid, role, actorId, department);
 
     if (customPermissions && Array.isArray(customPermissions)) {
@@ -4947,6 +5098,9 @@ app.put('/make-server-79198001/admin/security/admins/:adminId/deactivate', verif
     admin.updatedAt = new Date().toISOString();
     await kv.set(`admin:${adminId}`, admin);
 
+    // Ban in Supabase Auth so the existing session is rejected immediately
+    await supabase.auth.admin.updateUserById(admin.userId, { ban_duration: '876000h' }).catch(console.error);
+
     await adminService.logAdminAction(actorId, 'deactivate', 'admin', adminId, { userId: admin.userId });
     return c.json({ admin });
   } catch (err) {
@@ -4967,6 +5121,9 @@ app.put('/make-server-79198001/admin/security/admins/:adminId/activate', verifyA
     delete admin.deactivatedAt;
     delete admin.deactivatedBy;
     await kv.set(`admin:${adminId}`, admin);
+
+    // Lift the Auth ban so the admin can sign in again immediately
+    await supabase.auth.admin.updateUserById(admin.userId, { ban_duration: 'none' }).catch(console.error);
 
     await adminService.logAdminAction(actorId, 'activate', 'admin', adminId, { userId: admin.userId });
     return c.json({ admin });
@@ -5059,11 +5216,17 @@ app.get('/make-server-79198001/admin/security/alerts', verifyAuth, verifyAdmin, 
 
 // ── Permissions Matrix ───────────────────────────────────────────────────────
 
-const DEFAULT_ROLE_PERMS: Record<string, string[]> = Object.fromEntries(
-  Object.entries(adminService.DEFAULT_ROLE_PERMISSIONS).map(([role, permissions]) => [role, [...permissions]])
-);
+const DEFAULT_ROLE_PERMS: Record<string, string[]> = {
+  superadmin: ['users.view','users.create','users.edit','users.delete','users.ban','users.verify','artists.view','artists.edit','artists.delete','artists.verify','releases.view','releases.edit','releases.delete','releases.approve','releases.takedown','distributions.view','distributions.retry','distributions.cancel','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','payments.refund','reports.view','reports.upload','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','admins.view','admins.create','admins.edit','admins.delete','system.settings','system.logs','system.analytics'],
+  admin_operations: ['users.view','users.create','artists.view','releases.view','releases.edit','releases.approve','distributions.view','fraud.view','fraud.flag_users','payments.view','payments.approve','system.analytics'],
+  admin_finance: ['users.view','artists.view','releases.view','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','reports.view','reports.upload','system.analytics'],
+  admin_content: ['users.view','users.create','artists.view','artists.edit','releases.view','releases.edit','releases.approve','releases.takedown','distributions.view','distributions.retry','system.analytics'],
+  admin_support: ['users.view','users.create','users.edit','artists.view','artists.edit','releases.view','payments.view','fraud.view'],
+  admin_fraud: ['users.view','users.ban','artists.view','releases.view','releases.takedown','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','system.analytics'],
+  admin_analytics: ['users.view','artists.view','releases.view','distributions.view','payments.view','fraud.view','system.analytics','system.logs'],
+};
 
-const ALL_PERMISSIONS = [...adminService.ALL_AVAILABLE_PERMISSIONS];
+const ALL_PERMISSIONS = ['users.view','users.create','users.edit','users.delete','users.ban','users.verify','artists.view','artists.edit','artists.delete','artists.verify','releases.view','releases.edit','releases.delete','releases.approve','releases.takedown','distributions.view','distributions.retry','distributions.cancel','royalties.view','royalties.edit','royalties.approve','royalties.dispute','royalties.manage','payments.view','payments.approve','payments.cancel','payments.refund','reports.view','reports.upload','fraud.view','fraud.investigate','fraud.resolve','fraud.flag_users','admins.view','admins.create','admins.edit','admins.delete','system.settings','system.logs','system.analytics'];
 
 // GET /admin/security/permissions-matrix
 app.get('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, verifyAdmin, requirePermission('admins.view'), async (c) => {
@@ -5079,13 +5242,13 @@ app.get('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, v
   }
 });
 
-// PUT /admin/security/permissions-matrix — elevated admins only
+// PUT /admin/security/permissions-matrix — superadmin only
 app.put('/make-server-79198001/admin/security/permissions-matrix', verifyAuth, verifyAdmin, requirePermission('system.settings'), async (c) => {
   try {
     const actorId = c.get('userId');
     const actorAdmin = await adminService.getAdminUser(actorId);
-    if (!adminService.hasElevatedAdminAccess(actorAdmin)) {
-      return c.json({ error: 'Only elevated admin accounts can modify the permissions matrix' }, 403);
+    if (!actorAdmin || actorAdmin.role !== 'superadmin') {
+      return c.json({ error: 'Only superadmin can modify the permissions matrix' }, 403);
     }
     const { matrix } = await c.req.json();
     if (!matrix || typeof matrix !== 'object') return c.json({ error: 'matrix is required' }, 400);
@@ -5587,42 +5750,6 @@ const HR_AUDIT_LOG_KEY = 'hr:audit:v1';
 const HR_DEPARTMENTS_KEY = 'hr:departments:v1';
 const HR_ROLES_KEY = 'hr:roles:v1';
 
-const HR_DEFAULT_DEPARTMENT_SEEDS: Array<Partial<HrDepartmentRecord>> = [
-  {
-    name: 'Content',
-    description: 'Content planning, production, and publishing operations',
-    expenseAccount: 'Content Payroll Expense',
-  },
-  {
-    name: 'Finance',
-    description: 'Finance, payroll, treasury, and accounting operations',
-    expenseAccount: 'Finance Payroll Expense',
-  },
-  {
-    name: 'Operations',
-    description: 'Operational delivery, service coordination, and execution',
-    expenseAccount: 'Operations Payroll Expense',
-  },
-  {
-    name: 'HR',
-    description: 'Human resources, recruitment, and people operations',
-    expenseAccount: 'HR Payroll Expense',
-  },
-  {
-    name: 'Admin',
-    description: 'Administration, governance, and executive support',
-    expenseAccount: 'Admin Payroll Expense',
-  },
-];
-
-const HR_DEFAULT_ROLE_SEEDS: Array<Partial<HrRoleRecord>> = [
-  { department: 'Content', name: 'Content', defaultPayGrade: 'PG-1A' },
-  { department: 'Finance', name: 'Finance', defaultPayGrade: 'PG-1A' },
-  { department: 'Operations', name: 'Operations', defaultPayGrade: 'PG-1A' },
-  { department: 'HR', name: 'HR', defaultPayGrade: 'PG-1A' },
-  { department: 'Admin', name: 'Admin', defaultPayGrade: 'PG-1A' },
-];
-
 function hrNowIso() {
   return new Date().toISOString();
 }
@@ -5643,74 +5770,6 @@ async function loadHrStaff(): Promise<HrStaffRecord[]> {
   return data as HrStaffRecord[];
 }
 
-function normalizeOptionalEmail(value: string | null | undefined) {
-  return String(value || '').trim().toLowerCase();
-}
-
-function findHrStaffRecord(staff: HrStaffRecord[], userId: string | undefined, userEmail: string | null | undefined) {
-  const normalizedEmail = normalizeOptionalEmail(userEmail);
-  return staff.find((member) => {
-    if (userId && member.id === userId) {
-      return true;
-    }
-    return Boolean(normalizedEmail) && normalizeOptionalEmail(member.email) === normalizedEmail;
-  }) || null;
-}
-
-function getAuthenticatedActorName(activeUser: any, authUser: any, staffMember: HrStaffRecord | null) {
-  if (staffMember?.fullName) return staffMember.fullName;
-
-  const fullName = [activeUser?.firstName, activeUser?.lastName].filter(Boolean).join(' ').trim();
-  if (fullName) return fullName;
-  if (activeUser?.artistName) return activeUser.artistName;
-  if (activeUser?.labelName) return activeUser.labelName;
-  if (typeof authUser?.user_metadata?.fullName === 'string' && authUser.user_metadata.fullName.trim()) {
-    return authUser.user_metadata.fullName.trim();
-  }
-  if (typeof authUser?.user_metadata?.name === 'string' && authUser.user_metadata.name.trim()) {
-    return authUser.user_metadata.name.trim();
-  }
-  return authUser?.email || 'User';
-}
-
-async function resolvePortalActor(c: any, required = true): Promise<Response | { activeUser: any; staffMember: HrStaffRecord | null } | null> {
-  const accessToken = c.req.header('Authorization')?.split(' ')[1];
-  if (!accessToken) {
-    return required ? c.json({ error: 'Unauthorized: No token provided' }, 401) : null;
-  }
-
-  const { data: { user }, error } = await supabase.auth.getUser(accessToken);
-  if (error || !user) {
-    return required ? c.json({ error: 'Unauthorized: Invalid token' }, 401) : null;
-  }
-
-  const activeUser = await userService.getUserByUserId(user.id).catch(() => null);
-  const staff = await loadHrStaff();
-  const staffMember = findHrStaffRecord(staff, user.id, user.email);
-
-  if (!activeUser && !staffMember) {
-    return required ? c.json({ error: 'Unauthorized: User account no longer exists' }, 401) : null;
-  }
-
-  c.set('userId', user.id);
-  c.set('userEmail', user.email);
-  c.set('userName', getAuthenticatedActorName(activeUser, user, staffMember));
-  c.set('userRole', staffMember ? 'staff' : (activeUser?.role || user.user_metadata?.role || 'user'));
-  if (activeUser) c.set('activeUser', activeUser);
-  if (staffMember) c.set('staffMember', staffMember);
-
-  return { activeUser, staffMember };
-}
-
-async function verifyStaffPortalAuth(c: any, next: any) {
-  const actor = await resolvePortalActor(c, true);
-  if (actor instanceof Response) {
-    return actor;
-  }
-
-  await next();
-}
-
 async function saveHrStaff(staff: HrStaffRecord[]) {
   await kv.set(HR_STAFF_KEY, staff);
 }
@@ -5723,23 +5782,8 @@ async function loadHrAuditLog(): Promise<HrAuditLogEntry[]> {
 
 async function loadHrDepartments(): Promise<HrDepartmentRecord[]> {
   const data = await kv.get(HR_DEPARTMENTS_KEY);
-  const items = Array.isArray(data) ? data as HrDepartmentRecord[] : [];
-  const merged = items.slice();
-  let changed = false;
-
-  for (const seed of HR_DEFAULT_DEPARTMENT_SEEDS) {
-    const exists = merged.some((item) => item.name.toLowerCase() === String(seed.name || '').toLowerCase());
-    if (!exists) {
-      merged.push(normalizeHrDepartment(seed, 'system'));
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    await saveHrDepartments(merged);
-  }
-
-  return merged;
+  if (!Array.isArray(data)) return [];
+  return data as HrDepartmentRecord[];
 }
 
 async function saveHrDepartments(items: HrDepartmentRecord[]) {
@@ -5748,25 +5792,8 @@ async function saveHrDepartments(items: HrDepartmentRecord[]) {
 
 async function loadHrRoles(): Promise<HrRoleRecord[]> {
   const data = await kv.get(HR_ROLES_KEY);
-  const items = Array.isArray(data) ? data as HrRoleRecord[] : [];
-  const merged = items.slice();
-  let changed = false;
-
-  for (const seed of HR_DEFAULT_ROLE_SEEDS) {
-    const department = String(seed.department || '').toLowerCase();
-    const name = String(seed.name || '').toLowerCase();
-    const exists = merged.some((item) => item.department.toLowerCase() === department && item.name.toLowerCase() === name);
-    if (!exists) {
-      merged.push(normalizeHrRole(seed, 'system'));
-      changed = true;
-    }
-  }
-
-  if (changed) {
-    await saveHrRoles(merged);
-  }
-
-  return merged;
+  if (!Array.isArray(data)) return [];
+  return data as HrRoleRecord[];
 }
 
 async function saveHrRoles(items: HrRoleRecord[]) {
@@ -5909,8 +5936,6 @@ function normalizeHrStaff(input: Partial<HrStaffRecord>, existingCount: number, 
 }
 
 async function syncHrStaffToPayroll(staff: HrStaffRecord) {
-  const annualBaseSalary = Math.max(0, Number(staff.baseSalary || 0)) * 12;
-
   const employees = await payrollService.upsertEmployee({
     id: staff.payrollEmployeeId,
     employeeId: staff.staffId,
@@ -5919,7 +5944,7 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
     position: staff.role,
     status: staff.status === 'terminated' ? 'inactive' : (staff.status as any),
     hireDate: staff.joinDate,
-    salary: annualBaseSalary,
+    salary: staff.baseSalary,
     currency: staff.currency,
     personalInfo: {
       email: staff.email,
@@ -5933,7 +5958,7 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
       employmentType: staff.employmentType,
     },
     compensation: {
-      baseSalary: annualBaseSalary,
+      baseSalary: staff.baseSalary,
       hourlyRate: 0,
       payFrequency: 'monthly',
     },
@@ -5946,13 +5971,8 @@ async function syncHrStaffToPayroll(staff: HrStaffRecord) {
     benefits: {
       healthInsurance: staff.benefits.healthInsurance,
       healthInsuranceEmployer: 0,
-      housingAllowance: staff.benefits.housingAllowance,
-      transportAllowance: staff.benefits.transportAllowance,
-      mealAllowance: staff.benefits.mealAllowance,
-      pensionEmployeePercent: staff.benefits.pensionPercent,
-      nhfEmployeePercent: staff.benefits.nhfPercent,
-      retirement401kEnabled: false,
-      retirement401kPercent: 0,
+      retirement401kEnabled: true,
+      retirement401kPercent: staff.benefits.pensionPercent,
       retirement401kEmployerMatchPercent: 0,
       otherDeductions: 0,
     },
@@ -6913,17 +6933,6 @@ app.get('/make-server-79198001/admin/payroll/overview', verifyAuth, verifyAdmin,
             accountNumberMasked: linked.bank.accountNumber,
             routingNumberMasked: linked.bank.bankCode,
           },
-          benefits: {
-            ...employee.benefits,
-            housingAllowance: linked.benefits.housingAllowance,
-            transportAllowance: linked.benefits.transportAllowance,
-            mealAllowance: linked.benefits.mealAllowance,
-            pensionEmployeePercent: linked.benefits.pensionPercent,
-            nhfEmployeePercent: linked.benefits.nhfPercent,
-            retirement401kEnabled: false,
-            retirement401kPercent: 0,
-            retirement401kEmployerMatchPercent: 0,
-          },
         };
       });
       overview.dashboard.employeeCount = overview.employees.length;
@@ -7324,1110 +7333,953 @@ app.get("/make-server-79198001/smart-links/:linkId/analytics", verifyAuth, async
 // (Exported so callers within this module can reuse it)
 export { sendNotification };
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Admin API Routes
-// ─────────────────────────────────────────────────────────────────────────────
+// ==================== RELEASE DSP URLS (SMART LINK LANDING PAGES) ====================
 
-// GET /admin/users — get all admin users
-app.get('/make-server-79198001/admin/users', verifyAuth, async (c) => {
+// POST /releases/:releaseId/dsp-urls — save DSP URLs for a release (authenticated)
+app.post("/make-server-79198001/releases/:releaseId/dsp-urls", verifyAuth, async (c) => {
   try {
-    const admins = await adminService.getAllAdminUsers();
-    return c.json({ admins });
+    const userId = c.get('userId');
+    const releaseId = c.req.param('releaseId');
+    const body = await c.req.json();
+    const { releaseTitle, artistName, coverArtUrl, urls } = body;
+
+    if (!releaseTitle || !artistName || !urls) {
+      return c.json({ error: 'releaseTitle, artistName, and urls are required' }, 400);
+    }
+
+    const result = await releaseDSPService.upsertReleaseDSPUrls(
+      releaseId,
+      userId,
+      { releaseTitle, artistName, coverArtUrl, urls }
+    );
+
+    return c.json({ success: true, data: result });
   } catch (error) {
-    console.error('Error fetching admin users:', error);
-    return c.json({ error: `Failed to fetch admin users: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error saving DSP URLs:', error);
+    return c.json({ error: `Failed to save DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// GET /admin/users/:userId — get specific admin user
-app.get('/make-server-79198001/admin/users/:userId', verifyAuth, async (c) => {
+// GET /releases/:releaseId/dsp-urls — get DSP URLs for a release (public)
+app.get("/make-server-79198001/releases/:releaseId/dsp-urls", async (c) => {
   try {
+    const releaseId = c.req.param('releaseId');
+
+    const result = await releaseDSPService.getReleaseDSPUrls(releaseId);
+
+    if (!result) {
+      return c.json({ error: 'Release DSP URLs not found' }, 404);
+    }
+
+    return c.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Error fetching DSP URLs:', error);
+    return c.json({ error: `Failed to fetch DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// GET /user/:userId/releases/dsp-urls — get all DSP URLs for a user (authenticated)
+app.get("/make-server-79198001/user/:userId/releases/dsp-urls", verifyAuth, async (c) => {
+  try {
+    const authUserId = c.get('userId');
     const userId = c.req.param('userId');
-    const admin = await adminService.getAdminByUserId(userId);
-    
-    if (!admin) {
-      return c.json({ error: 'Admin user not found' }, 404);
+
+    // Only allow users to view their own DSP URLs
+    if (authUserId !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
     }
-    
-    return c.json({ adminUser: admin });
+
+    const results = await releaseDSPService.getUserReleaseDSPUrls(userId);
+
+    return c.json({ success: true, data: results });
   } catch (error) {
-    console.error('Error fetching admin user:', error);
-    return c.json({ error: `Failed to fetch admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error fetching user DSP URLs:', error);
+    return c.json({ error: `Failed to fetch DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// POST /admin/users — create admin user
-app.post('/make-server-79198001/admin/users', verifyAuth, async (c) => {
+// POST /releases/:releaseId/dsp-urls/deactivate — deactivate DSP URLs for a release
+app.post("/make-server-79198001/releases/:releaseId/dsp-urls/deactivate", verifyAuth, async (c) => {
   try {
-    const userId = c.get('userId');
-    const body = await c.req.json();
+    const releaseId = c.req.param('releaseId');
 
-    if (!body.userId || typeof body.userId !== 'string') {
-      return c.json({ error: 'userId is required' }, 400);
-    }
+    await releaseDSPService.deactivateReleaseDSPUrls(releaseId);
 
-    if (!body.role || typeof body.role !== 'string') {
-      return c.json({ error: 'role is required' }, 400);
-    }
-
-    const admin = await adminService.createAdminUser(
-      body.userId,
-      body.role,
-      userId,
-      body.department
-    );
-
-    return c.json({ adminUser: admin });
+    return c.json({ success: true, message: 'DSP URLs deactivated' });
   } catch (error) {
-    console.error('Error creating admin user:', error);
-    return c.json({ error: `Failed to create admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error deactivating DSP URLs:', error);
+    return c.json({ error: `Failed to deactivate DSP URLs: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// PUT /admin/users/:userId/role — update admin role
-app.put('/make-server-79198001/admin/users/:userId/role', verifyAuth, async (c) => {
+// ==================== SMART LINKS ROUTES ====================
+
+// GET /smart-links/:slug – Fetch public smart link by slug (NO AUTH REQUIRED)
+app.get("/make-server-79198001/smart-links/:slug", async (c) => {
   try {
-    const currentUserId = c.get('userId');
-    const targetUserId = c.req.param('userId');
-    const body = await c.req.json();
-
-    if (!body.role || typeof body.role !== 'string') {
-      return c.json({ error: 'role is required' }, 400);
+    const slug = c.req.param('slug');
+    if (!slug || typeof slug !== 'string' || slug.length === 0) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
     }
 
-    const admin = await adminService.updateAdminRole(targetUserId, body.role, currentUserId);
-    
-    if (!admin) {
-      return c.json({ error: 'Admin user not found' }, 404);
+    // Query smart_links table for the slug
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('*')
+      .eq('slug', slug.toLowerCase())
+      .eq('is_public', true)
+      .eq('status', 'active')
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
     }
 
-    return c.json({ adminUser: admin });
+    // Fetch associated services (platform URLs)
+    const { data: services = [] } = await supabase
+      .from('smart_link_services')
+      .select('*')
+      .eq('smart_link_id', link.id)
+      .eq('enabled', true)
+      .order('display_order', { ascending: true });
+
+    // Fetch settings
+    const { data: settings } = await supabase
+      .from('smart_link_settings')
+      .select('*')
+      .eq('smart_link_id', link.id)
+      .single();
+
+    // Transform to frontend format
+    const smartLink = {
+      id: link.id,
+      slug: link.slug,
+      title: link.title,
+      artistName: link.artist_name,
+      releaseId: link.release_id,
+      artworkUrl: link.artwork_url,
+      services: services.map((s: any) => ({
+        id: s.id,
+        platform: s.platform_key,
+        platformName: s.platform_name,
+        url: s.platform_url,
+        displayOrder: s.display_order,
+        clickCount: s.click_count,
+      })),
+      settings: settings ? {
+        theme: settings.theme,
+        backgroundColor: settings.background_color,
+        buttonStyle: settings.button_style,
+        showArtistBio: settings.show_artist_bio,
+        showCoverArt: settings.show_cover_art,
+      } : null,
+      viewCount: link.total_views,
+      clickCount: link.total_clicks,
+    };
+
+    return c.json(smartLink);
   } catch (error) {
-    console.error('Error updating admin role:', error);
-    return c.json({ error: `Failed to update admin role: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error fetching smart link:', error);
+    return c.json({ error: `Failed to fetch smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// DELETE /admin/users/:userId — delete admin user
-app.delete('/make-server-79198001/admin/users/:userId', verifyAuth, async (c) => {
+// POST /smart-links/:slug/events/view – Record view event (NO AUTH)
+app.post("/make-server-79198001/smart-links/:slug/events/view", async (c) => {
   try {
-    const currentUserId = c.get('userId');
-    const targetUserId = c.req.param('userId');
+    const slug = c.req.param('slug');
+    const body = await c.req.json().catch(() => ({}));
 
-    await adminService.deleteAdminUser(targetUserId, currentUserId);
-    
-    return c.json({ success: true });
+    if (!slug) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
+    }
+
+    // Get the smart link
+    const { data: link } = await supabase
+      .from('smart_links')
+      .select('id, total_views')
+      .eq('slug', slug.toLowerCase())
+      .single();
+
+    if (!link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    // Increment view count
+    const { error: updateError } = await supabase
+      .from('smart_links')
+      .update({ 
+        total_views: (link.total_views || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', link.id);
+
+    if (updateError) throw updateError;
+
+    return c.json({ success: true, message: 'View recorded' });
   } catch (error) {
-    console.error('Error deleting admin user:', error);
-    return c.json({ error: `Failed to delete admin user: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error recording view:', error);
+    return c.json({ error: `Failed to record view: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// ==================== SUPPORT TICKET ROUTES ====================
-
-// POST /support/tickets - Create a new support ticket (public or authenticated)
-app.post('/make-server-79198001/support/tickets', async (c) => {
+// POST /smart-links/:slug/events/click – Record click event (NO AUTH)
+app.post("/make-server-79198001/smart-links/:slug/events/click", async (c) => {
   try {
-    await resolvePortalActor(c, false);
-    const body = await c.req.json();
-    const { subject, category, message, priority } = body;
+    const slug = c.req.param('slug');
+    const body = await c.req.json().catch(() => ({}));
+    const platformKey = typeof body.platformKey === 'string' ? body.platformKey : null;
 
-    // Get user info if authenticated
-    const userId = c.get('userId');
-    const userName = c.get('userName');
-    const userRole = c.get('userRole');
-    const userEmail: string = c.get('userEmail') || body.email;
-
-    if (!subject || !category || !message || !userEmail) {
-      return c.json({ error: 'Missing required fields: subject, category, message, email' }, 400);
+    if (!slug) {
+      return c.json({ error: 'Smart link slug is required' }, 400);
     }
 
-    // Create the ticket
-    const ticket = await supportService.createSupportTicket(
-      userEmail,
-      userId,
-      userName,
-      userRole,
-      subject,
-      category,
-      message,
-      priority || 'normal'
-    );
+    // Get the smart link
+    const { data: link } = await supabase
+      .from('smart_links')
+      .select('id, total_clicks')
+      .eq('slug', slug.toLowerCase())
+      .single();
 
-    // Send confirmation email to user
-    await emailService.sendTicketCreationEmail(ticket);
-
-    // Notify admins
-    await emailService.sendNewTicketNotificationToAdmins(ticket);
-
-    return c.json({ ticket, message: 'Support ticket created successfully' }, 201);
-  } catch (error) {
-    console.error('Error creating support ticket:', error);
-    return c.json({ error: `Failed to create support ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// GET /support/tickets - Get all tickets for authenticated user
-app.get('/make-server-79198001/support/tickets', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-
-    const [userTickets, emailTickets] = await Promise.all([
-      supportService.getUserSupportTickets(userId),
-      userEmail ? supportService.getEmailSupportTickets(userEmail) : Promise.resolve([]),
-    ]);
-
-    const deduped = new Map<string, any>();
-    for (const ticket of [...userTickets, ...emailTickets]) {
-      deduped.set(ticket.id, ticket);
+    if (!link) {
+      return c.json({ error: 'Smart link not found' }, 404);
     }
 
-    const tickets = [...deduped.values()].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    return c.json({ tickets }, 200);
-  } catch (error) {
-    console.error('Error fetching support tickets:', error);
-    return c.json({ error: `Failed to fetch support tickets: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
+    // Increment smart link total clicks
+    await supabase
+      .from('smart_links')
+      .update({ 
+        total_clicks: (link.total_clicks || 0) + 1,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', link.id);
 
-// GET /support/tickets/:ticketId - Get a specific ticket
-app.get('/make-server-79198001/support/tickets/:ticketId', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const ticketId = c.req.param('ticketId');
-    const ticket = await supportService.getSupportTicket(ticketId);
+    // Increment platform-specific click count if platform provided
+    if (platformKey) {
+      const { data: service } = await supabase
+        .from('smart_link_services')
+        .select('id, click_count')
+        .eq('smart_link_id', link.id)
+        .eq('platform_key', platformKey)
+        .single();
 
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    const ownsTicket = ticket.userId === userId || normalizeOptionalEmail(ticket.userEmail) === normalizeOptionalEmail(userEmail);
-    if (!ownsTicket) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    return c.json({ ticket }, 200);
-  } catch (error) {
-    console.error('Error fetching support ticket:', error);
-    return c.json({ error: `Failed to fetch support ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// POST /support/tickets/:ticketId/messages - Add a message to a ticket
-app.post('/make-server-79198001/support/tickets/:ticketId/messages', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const ticketId = c.req.param('ticketId');
-    const body = await c.req.json();
-    const { message } = body;
-
-    if (!message) {
-      return c.json({ error: 'Message is required' }, 400);
-    }
-
-    const existingTicket = await supportService.getSupportTicket(ticketId);
-    if (!existingTicket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    const ownsTicket = existingTicket.userId === userId || normalizeOptionalEmail(existingTicket.userEmail) === normalizeOptionalEmail(userEmail);
-    if (!ownsTicket) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    const ticket = await supportService.addMessageToTicket(
-      ticketId,
-      'user',
-      userId,
-      userEmail,
-      c.get('userName'),
-      message
-    );
-
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    // If ticket was waiting on user and they replied, reset status
-    if (userId) {
-      await emailService.sendNewTicketNotificationToAdmins(ticket);
-    }
-
-    return c.json({ ticket }, 200);
-  } catch (error) {
-    console.error('Error adding message to ticket:', error);
-    return c.json({ error: `Failed to add message: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// PATCH /support/tickets/:ticketId/close - Close a ticket
-app.patch('/make-server-79198001/support/tickets/:ticketId/close', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const ticketId = c.req.param('ticketId');
-    const existingTicket = await supportService.getSupportTicket(ticketId);
-
-    if (!existingTicket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    const ownsTicket = existingTicket.userId === userId || normalizeOptionalEmail(existingTicket.userEmail) === normalizeOptionalEmail(userEmail);
-    if (!ownsTicket) {
-      return c.json({ error: 'Forbidden' }, 403);
-    }
-
-    const ticket = await supportService.updateTicketStatus(ticketId, 'closed');
-
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    // Send status change email
-    await emailService.sendStatusChangeEmail(ticket, ticket.status);
-
-    return c.json({ ticket }, 200);
-  } catch (error) {
-    console.error('Error closing ticket:', error);
-    return c.json({ error: `Failed to close ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// ==================== ADMIN SUPPORT ROUTES ====================
-
-// GET /admin/support/tickets - Get all support tickets (admin)
-app.get('/make-server-79198001/admin/support/tickets', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const tickets = await supportService.getAllSupportTickets();
-    return c.json({ tickets }, 200);
-  } catch (error) {
-    console.error('Error fetching admin support tickets:', error);
-    return c.json({ error: `Failed to fetch tickets: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// GET /admin/support/tickets/:ticketId - Get a specific ticket (admin)
-app.get('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const ticketId = c.req.param('ticketId');
-    const ticket = await supportService.getSupportTicket(ticketId);
-
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    return c.json({ ticket }, 200);
-  } catch (error) {
-    console.error('Error fetching support ticket:', error);
-    return c.json({ error: `Failed to fetch ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// PATCH /admin/support/tickets/:ticketId - Update ticket (admin)
-app.patch('/make-server-79198001/admin/support/tickets/:ticketId', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const ticketId = c.req.param('ticketId');
-    const body = await c.req.json();
-    const { status, priority, assignedAdminId, assignedAdminEmail, adminNotes } = body;
-
-    let ticket = await supportService.getSupportTicket(ticketId);
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
-    }
-
-    const oldStatus = ticket.status;
-
-    // Update status if provided
-    if (status) {
-      ticket = await supportService.updateTicketStatus(ticketId, status);
-      
-      // Send status change email to user
-      if (status !== oldStatus) {
-        await emailService.sendStatusChangeEmail(ticket!, oldStatus);
+      if (service) {
+        await supabase
+          .from('smart_link_services')
+          .update({ 
+            click_count: (service.click_count || 0) + 1,
+            last_clicked_at: new Date().toISOString()
+          })
+          .eq('id', service.id);
       }
     }
 
-    // Update priority if provided
-    if (priority) {
-      ticket = await supportService.updateTicketPriority(ticketId, priority);
-    }
-
-    // Assign to admin if provided
-    if (assignedAdminId && assignedAdminEmail) {
-      ticket = await supportService.assignTicketToAdmin(ticketId, assignedAdminId, assignedAdminEmail);
-    }
-
-    // Set admin notes if provided
-    if (adminNotes !== undefined) {
-      ticket = await supportService.setAdminNotes(ticketId, adminNotes);
-    }
-
-    return c.json({ ticket }, 200);
+    return c.json({ success: true, message: 'Click recorded' });
   } catch (error) {
-    console.error('Error updating support ticket:', error);
-    return c.json({ error: `Failed to update ticket: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+    console.error('Error recording click:', error);
+    return c.json({ error: `Failed to record click: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// POST /admin/support/tickets/:ticketId/messages - Admin reply to ticket
-app.post('/make-server-79198001/admin/support/tickets/:ticketId/messages', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
+// GET /smart-links – Get user's smart links (AUTH REQUIRED)
+app.get("/make-server-79198001/smart-links", verifyAuth, async (c) => {
   try {
-    const ticketId = c.req.param('ticketId');
+    const userId = c.get('userId');
+
+    const { data: links = [], error } = await supabase
+      .from('smart_links')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+
+    return c.json({ success: true, data: links });
+  } catch (error) {
+    console.error('Error fetching user smart links:', error);
+    return c.json({ error: `Failed to fetch smart links: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// POST /smart-links – Create new smart link (AUTH REQUIRED)
+app.post("/make-server-79198001/smart-links", verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
     const body = await c.req.json();
-    const { message } = body;
 
-    if (!message) {
-      return c.json({ error: 'Message is required' }, 400);
+    const {
+      title,
+      artistName,
+      slug,
+      releaseId,
+      services = [],
+      settings = {},
+    } = body;
+
+    if (!title || !artistName || !slug) {
+      return c.json({ error: 'Title, artist name, and slug are required' }, 400);
     }
 
-    const adminId = c.get('userId');
-    const adminEmail = c.get('userEmail') || c.get('email');
-    const adminName = c.get('userName');
+    // Check if slug already exists
+    const { data: existing } = await supabase
+      .from('smart_links')
+      .select('id')
+      .eq('slug', slug.toLowerCase())
+      .single();
 
-    const ticket = await supportService.addMessageToTicket(
-      ticketId,
-      'admin',
-      adminId,
-      adminEmail,
-      adminName,
-      message
-    );
-
-    if (!ticket) {
-      return c.json({ error: 'Ticket not found' }, 404);
+    if (existing) {
+      return c.json({ error: 'This slug is already taken' }, 400);
     }
 
-    // Update status to in_progress if it was acknowledged
-    if (ticket.status === 'acknowledged') {
-      await supportService.updateTicketStatus(ticketId, 'in_progress');
-    }
-
-    // Send email to user about admin response
-    const lastMessage = ticket.messages[ticket.messages.length - 1];
-    await emailService.sendAdminResponseEmail(ticket, lastMessage, adminName);
-
-    // Update ticket after sending email
-    const updatedTicket = await supportService.getSupportTicket(ticketId);
-
-    return c.json({ ticket: updatedTicket }, 200);
-  } catch (error) {
-    console.error('Error adding admin message to ticket:', error);
-    return c.json({ error: `Failed to add message: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// GET /admin/support/stats - Get support statistics (admin)
-app.get('/make-server-79198001/admin/support/stats', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const stats = await supportService.getSupportStats();
-    return c.json({ stats }, 200);
-  } catch (error) {
-    console.error('Error fetching support stats:', error);
-    return c.json({ error: `Failed to fetch stats: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
-  }
-});
-
-// ==================== ACCOUNTING REPORTS ROUTES ====================
-
-// POST /admin/accounting/sync-entries - Generate GL entries from real transaction data
-app.post('/make-server-79198001/admin/accounting/sync-entries', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const adminUser = c.get('adminUser');
-    
-    // Generate auto entries from real data
-    const syncResult = await accountingService.generateAutoEntries(adminUser.id);
-    
-    // Recalculate balances
-    await accountingService.recalculateAccountBalances();
-
-    return c.json({ 
-      success: true,
-      entriesCreated: syncResult.created,
-      message: `Synced ${syncResult.created} GL entries from transaction data`
-    });
-  } catch (error) {
-    console.error('Error syncing GL entries:', error);
-    return c.json({ error: 'Failed to sync entries' }, 500);
-  }
-});
-
-// GET /admin/accounting/trial-balance - Get trial balance report
-app.get('/make-server-79198001/admin/accounting/trial-balance', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const adminUser = c.get('adminUser');
-
-    // Auto-sync entries before generating report
-    await accountingService.generateAutoEntries(adminUser.id);
-
-    const report = await accountingService.getTrialBalance();
-    return c.json(report);
-  } catch (error) {
-    console.error('Error fetching trial balance:', error);
-    return c.json({ error: 'Failed to fetch trial balance' }, 500);
-  }
-});
-
-// GET /admin/accounting/balance-sheet - Get balance sheet report
-app.get('/make-server-79198001/admin/accounting/balance-sheet', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const adminUser = c.get('adminUser');
-
-    // Auto-sync entries before generating report
-    await accountingService.generateAutoEntries(adminUser.id);
-
-    const asAtDate = c.req.query('date');
-    const report = await accountingService.getBalanceSheet(asAtDate);
-    return c.json(report);
-  } catch (error) {
-    console.error('Error fetching balance sheet:', error);
-    return c.json({ error: 'Failed to fetch balance sheet' }, 500);
-  }
-});
-
-// GET /admin/accounting/income-statement - Get income statement report
-app.get('/make-server-79198001/admin/accounting/income-statement', verifyAuth, verifyAdmin, requirePermission('system.logs'), async (c) => {
-  try {
-    const adminUser = c.get('adminUser');
-
-    // Auto-sync entries before generating report
-    await accountingService.generateAutoEntries(adminUser.id);
-
-    const startDate = c.req.query('startDate');
-    const endDate = c.req.query('endDate');
-    const report = await accountingService.getIncomeStatement(startDate, endDate);
-    return c.json(report);
-  } catch (error) {
-    console.error('Error fetching income statement:', error);
-    return c.json({ error: 'Failed to fetch income statement' }, 500);
-  }
-});
-
-// ═══════════════════════════════════════════════════════════════════════════
-// STAFF PORTAL ENDPOINTS (self-service for authenticated staff users)
-// ═══════════════════════════════════════════════════════════════════════════
-
-// ── Leave Management ────────────────────────────────────────────────────────
-
-app.post('/make-server-79198001/staff-portal/leave/apply', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const body = await c.req.json();
-    const { leaveType, startDate, endDate, reason } = body;
-    if (!leaveType || !startDate || !endDate || !reason) {
-      return c.json({ error: 'leaveType, startDate, endDate, and reason are required' }, 400);
-    }
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
-      return c.json({ error: 'Invalid date range' }, 400);
-    }
-    const diffMs = end.getTime() - start.getTime();
-    const numberOfDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)) + 1);
-
-    const staff = await loadHrStaff();
-  const member = findHrStaffRecord(staff, userId, userEmail);
-    const staffName = member?.fullName || 'Staff Member';
-
-    const id = crypto.randomUUID();
-    const application = {
-      id,
-      staffId: userId,
-      staffName,
-      leaveType,
-      startDate,
-      endDate,
-      numberOfDays,
-      reason: String(reason).slice(0, 500),
-      status: 'pending',
-      appliedAt: new Date().toISOString(),
-      appliedBy: userId,
-    };
-    const existing: any[] = await kv.get('staff-portal:leave:applications') || [];
-    existing.unshift(application);
-    await kv.set('staff-portal:leave:applications', existing.slice(0, 2000));
-    return c.json({ application }, 201);
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/staff-portal/leave/applications', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const statusFilter = c.req.query('status');
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    let apps = all.filter((a: any) => a.staffId === userId);
-    if (statusFilter) apps = apps.filter((a: any) => a.status === statusFilter);
-    return c.json({ applications: apps });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/staff-portal/leave/balance', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const staff = await loadHrStaff();
-    const member = findHrStaffRecord(staff, userId, userEmail);
-
-    const leaveTypes: string[] = ['annual', 'sick', 'parental', 'study'];
-    const typeToBalance: Record<string, number> = {
-      annual: member?.leaveBalance?.annualLeaveDays ?? 0,
-      sick: member?.leaveBalance?.sickLeaveDays ?? 0,
-      parental: member?.leaveBalance?.parentalLeaveDays ?? 0,
-      study: member?.leaveBalance?.studyLeaveDays ?? 0,
-    };
-    const typeToEntitlement: Record<string, number> = {
-      annual: member?.entitlements?.annualLeaveDays ?? 20,
-      sick: member?.entitlements?.sickLeaveDays ?? 10,
-      parental: member?.entitlements?.parentalLeaveDays ?? 90,
-      study: member?.entitlements?.studyLeaveDays ?? 5,
-    };
-
-    const allApps: any[] = await kv.get('staff-portal:leave:applications') || [];
-    const myApps = allApps.filter((a: any) => a.staffId === userId);
-
-    const balances = leaveTypes.map((lt) => {
-      const used = myApps.filter((a: any) => a.leaveType === lt && a.status === 'approved').reduce((s: number, a: any) => s + (a.numberOfDays || 0), 0);
-      const pending = myApps.filter((a: any) => a.leaveType === lt && a.status === 'pending').reduce((s: number, a: any) => s + (a.numberOfDays || 0), 0);
-      const totalAllowed = typeToEntitlement[lt];
-      const available = Math.max(0, (typeToBalance[lt] || totalAllowed) - used - pending);
-      return {
-        staffId: userId,
-        staffName: member?.fullName || 'Staff Member',
-        leaveType: lt,
-        totalAllowed,
-        used,
-        pending,
-        available,
-      };
-    });
-    return c.json({ balances });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.post('/make-server-79198001/staff-portal/leave/applications/:id/cancel', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const id = c.req.param('id');
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    const idx = all.findIndex((a: any) => a.id === id && a.staffId === userId);
-    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
-    if (all[idx].status !== 'pending') return c.json({ error: 'Only pending applications can be cancelled' }, 400);
-    all[idx] = { ...all[idx], status: 'cancelled', cancelledAt: new Date().toISOString() };
-    await kv.set('staff-portal:leave:applications', all);
-    return c.json({ application: all[idx] });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-// ── Staff Portal Management (admin: approve/reject leave) ──────────────────
-
-app.get('/make-server-79198001/admin/staff-portal/leave/applications', verifyAuth, verifyAdmin, async (c) => {
-  try {
-    const statusFilter = c.req.query('status');
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    const apps = statusFilter ? all.filter((a: any) => a.status === statusFilter) : all;
-    return c.json({ applications: apps });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.post('/make-server-79198001/admin/staff-portal/leave/applications/:id/approve', verifyAuth, verifyAdmin, async (c) => {
-  try {
-    const adminId = c.get('userId');
-    const id = c.req.param('id');
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    const idx = all.findIndex((a: any) => a.id === id);
-    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
-    all[idx] = { ...all[idx], status: 'approved', approvedBy: adminId, approvedAt: new Date().toISOString() };
-    await kv.set('staff-portal:leave:applications', all);
-    return c.json({ application: all[idx] });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.post('/make-server-79198001/admin/staff-portal/leave/applications/:id/reject', verifyAuth, verifyAdmin, async (c) => {
-  try {
-    const adminId = c.get('userId');
-    const id = c.req.param('id');
-    const body = await c.req.json().catch(() => ({}));
-    const all: any[] = await kv.get('staff-portal:leave:applications') || [];
-    const idx = all.findIndex((a: any) => a.id === id);
-    if (idx === -1) return c.json({ error: 'Application not found' }, 404);
-    all[idx] = { ...all[idx], status: 'rejected', rejectedBy: adminId, rejectedAt: new Date().toISOString(), rejectionReason: body.reason || '' };
-    await kv.set('staff-portal:leave:applications', all);
-    return c.json({ application: all[idx] });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-// ── Payslips ─────────────────────────────────────────────────────────────────
-
-function roundPayslipAmount(value: unknown) {
-  const numeric = Number(value || 0);
-  return Math.round((numeric + Number.EPSILON) * 100) / 100;
-}
-
-function formatPayslipAmount(amount: number, currency = 'NGN') {
-  try {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: String(currency || 'NGN').toUpperCase(),
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(roundPayslipAmount(amount));
-  } catch {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(roundPayslipAmount(amount));
-  }
-}
-
-function buildPayslipId(runId: string, employeeId: string) {
-  return `${runId}~${employeeId}`;
-}
-
-function parsePayslipId(rawId: string) {
-  const tildeIndex = rawId.indexOf('~');
-  if (tildeIndex >= 0) {
-    return {
-      runId: rawId.slice(0, tildeIndex),
-      employeeId: rawId.slice(tildeIndex + 1),
-    };
-  }
-
-  const legacyEmployeeMarker = rawId.indexOf('-emp_');
-  if (legacyEmployeeMarker >= 0) {
-    return {
-      runId: rawId.slice(0, legacyEmployeeMarker),
-      employeeId: rawId.slice(legacyEmployeeMarker + 1),
-    };
-  }
-
-  return { runId: '', employeeId: '' };
-}
-
-function portalPayslipStatus(runStatus?: string) {
-  if (runStatus === 'paid' || runStatus === 'locked') return 'paid';
-  if (runStatus === 'draft') return 'draft';
-  return 'finalized';
-}
-
-function totalStubDeductions(stub: any) {
-  const deductionSummary = stub?.deductionSummary || {};
-  const deductions = stub?.deductions || {};
-  return roundPayslipAmount(
-    Number(deductionSummary.paye ?? deductions.federalWithholding ?? 0)
-      + Number(deductionSummary.pension ?? deductions.socialSecurity ?? 0)
-      + Number(deductionSummary.nhf ?? deductions.medicare ?? 0)
-      + Number(deductionSummary.stateLevy ?? deductions.stateIncomeTax ?? 0)
-      + Number(deductionSummary.localLevy ?? deductions.localIncomeTax ?? 0)
-      + Number(deductionSummary.healthInsurance ?? deductions.healthInsurance ?? 0)
-      + Number(deductionSummary.voluntaryRetirement ?? deductions.retirement401k ?? 0)
-      + Number(deductionSummary.other ?? deductions.other ?? 0)
-      + Number(deductionSummary.unpaidLeaveAdjustment ?? deductions.unpaidLeaveAdjustment ?? 0),
-  );
-}
-
-function totalStubEmployerContributions(stub: any) {
-  const employerContributionSummary = stub?.employerContributionSummary || {};
-  const employerContribution = stub?.employerContribution || {};
-  return roundPayslipAmount(
-    Number(employerContributionSummary.pension ?? employerContribution.socialSecurity ?? 0)
-      + Number(employerContributionSummary.nhf ?? employerContribution.medicare ?? 0)
-      + Number(employerContributionSummary.nsitf ?? employerContribution.futa ?? 0)
-      + Number(employerContributionSummary.stateLevy ?? employerContribution.suta ?? 0)
-      + Number(employerContributionSummary.healthInsurance ?? employerContribution.healthInsurance ?? 0)
-      + Number(employerContributionSummary.voluntaryRetirementMatch ?? employerContribution.retirement401kMatch ?? 0),
-  );
-}
-
-function staffOwnsPortalPayslip(stub: any, member: HrStaffRecord | null, userEmail: string | null | undefined) {
-  const normalizedUserEmail = normalizeOptionalEmail(userEmail);
-
-  if (member?.payrollEmployeeId && stub?.employeeId === member.payrollEmployeeId) {
-    return true;
-  }
-
-  if (member?.staffId && stub?.employeeId === member.staffId) {
-    return true;
-  }
-
-  if (member?.fullName && String(stub?.employeeName || '').trim().toLowerCase() === member.fullName.trim().toLowerCase()) {
-    return true;
-  }
-
-  return Boolean(normalizedUserEmail) && normalizeOptionalEmail(stub?.employeeEmail) === normalizedUserEmail;
-}
-
-function buildPortalPayslip(run: any, stub: any, member: HrStaffRecord | null, authUserId: string) {
-  const payslipId = buildPayslipId(String(run?.id || stub?.runId || ''), String(stub?.employeeId || ''));
-  const payDate = String(stub?.period?.payDate || run?.period?.payDate || '');
-  const deductionSummary = stub?.deductionSummary || {};
-  const deductions = stub?.deductions || {};
-  const employerContributionSummary = stub?.employerContributionSummary || {};
-  const employerContribution = stub?.employerContribution || {};
-  const baseSalary = roundPayslipAmount(stub?.earnings?.basePay ?? member?.baseSalary ?? 0);
-  const housingAllowance = roundPayslipAmount(stub?.earnings?.housingAllowance ?? member?.benefits?.housingAllowance ?? 0);
-  const transportAllowance = roundPayslipAmount(stub?.earnings?.transportAllowance ?? member?.benefits?.transportAllowance ?? 0);
-  const mealAllowance = roundPayslipAmount(stub?.earnings?.mealAllowance ?? member?.benefits?.mealAllowance ?? 0);
-  const allowances = roundPayslipAmount(housingAllowance + transportAllowance + mealAllowance);
-  const grossSalary = roundPayslipAmount(stub?.grossPay || 0);
-  const tax = roundPayslipAmount((deductionSummary.paye ?? deductions.federalWithholding) || 0);
-  const pension = roundPayslipAmount((deductionSummary.pension ?? deductions.socialSecurity) || 0);
-  const nhf = roundPayslipAmount((deductionSummary.nhf ?? deductions.medicare) || 0);
-  const stateLevy = roundPayslipAmount((deductionSummary.stateLevy ?? deductions.stateIncomeTax) || 0);
-  const localLevy = roundPayslipAmount((deductionSummary.localLevy ?? deductions.localIncomeTax) || 0);
-  const insurancePremium = roundPayslipAmount((deductionSummary.healthInsurance ?? deductions.healthInsurance ?? member?.benefits?.healthInsurance) || 0);
-  const otherDeductions = roundPayslipAmount(
-    Number(deductionSummary.voluntaryRetirement ?? deductions.retirement401k ?? 0)
-      + Number(deductionSummary.other ?? deductions.other ?? 0)
-      + Number(deductionSummary.unpaidLeaveAdjustment ?? deductions.unpaidLeaveAdjustment ?? 0),
-  );
-
-  return {
-    id: payslipId,
-    staffId: member?.staffId || member?.id || authUserId,
-    staffName: member?.fullName || stub?.employeeName || 'Staff Member',
-    payGrade: member?.payGrade || '',
-    department: member?.department || '',
-    role: member?.role || '',
-    payPeriod: `${String(stub?.period?.startDate || run?.period?.startDate || '')} – ${String(stub?.period?.endDate || run?.period?.endDate || '')}`,
-    payDate,
-    baseSalary,
-    allowances,
-    grossSalary,
-    deductions: roundPayslipAmount(stub?.deductionSummary?.total ?? totalStubDeductions(stub)),
-    netSalary: roundPayslipAmount(stub?.netPay || 0),
-    currency: String(stub?.currency || member?.currency || 'NGN').toUpperCase(),
-    tax,
-    pension,
-    nhf,
-    stateLevy,
-    localLevy,
-    insurancePremium,
-    otherDeductions,
-    employerPension: roundPayslipAmount((employerContributionSummary.pension ?? employerContribution.socialSecurity) || 0),
-    employerStatutory: roundPayslipAmount(employerContributionSummary.total ?? totalStubEmployerContributions(stub)),
-    status: portalPayslipStatus(run?.status),
-    downloadUrl: `/make-server-79198001/staff-portal/payslips/${payslipId}/download`,
-    createdAt: payDate || new Date().toISOString(),
-  };
-}
-
-app.get('/make-server-79198001/staff-portal/payslips', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const yearQ = c.req.query('year');
-    const monthQ = c.req.query('month');
-
-    const staff = await loadHrStaff();
-    const member = findHrStaffRecord(staff, userId, userEmail);
-    const overview = await payrollService.getOverview();
-    const allRuns = Array.isArray((overview as any).runs) ? (overview as any).runs : [];
-
-    const payslips: any[] = [];
-    for (const run of allRuns) {
-      if (!run?.id) continue;
-      try {
-        const stubs = await payrollService.getPayStubs(run.id);
-        for (const stub of stubs) {
-          if (!staffOwnsPortalPayslip(stub, member, userEmail)) continue;
-
-          const payDate = stub.period?.payDate || run.period?.payDate || '';
-          if (yearQ && !payDate.startsWith(yearQ)) continue;
-          if (monthQ && !payDate.startsWith(`${yearQ || payDate.slice(0, 4)}-${String(monthQ).padStart(2, '0')}`)) continue;
-          payslips.push(buildPortalPayslip(run, stub, member, userId));
-        }
-      } catch (_) { /* skip runs with no stubs */ }
-    }
-    payslips.sort((a, b) => b.payDate.localeCompare(a.payDate));
-    return c.json({ payslips });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/staff-portal/payslips/:id', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const { runId, employeeId } = parsePayslipId(c.req.param('id'));
-    if (!runId || !employeeId) return c.json({ error: 'Invalid payslip id' }, 400);
-
-    const overview = await payrollService.getOverview();
-    const run = (Array.isArray((overview as any).runs) ? (overview as any).runs : []).find((item: any) => item.id === runId) || null;
-    const stubs = await payrollService.getPayStubs(runId);
-    const stub = stubs.find((s: any) => s.employeeId === employeeId);
-    if (!stub) return c.json({ error: 'Payslip not found' }, 404);
-
-    const staff = await loadHrStaff();
-    const member = findHrStaffRecord(staff, userId, userEmail);
-    if (!staffOwnsPortalPayslip(stub, member, userEmail)) {
-      return c.json({ error: 'Payslip not found' }, 404);
-    }
-
-    return c.json({
-      payslip: buildPortalPayslip(run || { id: runId, status: 'finalized', period: stub.period }, stub, member, userId),
-    });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/staff-portal/payslips/:id/download', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const payslipId = c.req.param('id');
-    const { runId, employeeId } = parsePayslipId(payslipId);
-    if (!runId || !employeeId) return c.json({ error: 'Invalid payslip id' }, 400);
-
-    const overview = await payrollService.getOverview();
-    const run = (Array.isArray((overview as any).runs) ? (overview as any).runs : []).find((item: any) => item.id === runId) || null;
-    const stubs = await payrollService.getPayStubs(runId);
-    const stub = stubs.find((s: any) => s.employeeId === employeeId);
-    if (!stub) return c.json({ error: 'Payslip not found' }, 404);
-
-    const staff = await loadHrStaff();
-    const member = findHrStaffRecord(staff, userId, userEmail);
-    if (!staffOwnsPortalPayslip(stub, member, userEmail)) {
-      return c.json({ error: 'Payslip not found' }, 404);
-    }
-
-    const payslip = buildPortalPayslip(run || { id: runId, status: 'finalized', period: stub.period }, stub, member, userId);
-    const lines = [
-      'PAYSLIP',
-      'Nigeria Payroll Format',
-      `Employee: ${payslip.staffName}`,
-      `Staff ID: ${member?.staffId || userId}`,
-      `Department: ${payslip.department || '-'}`,
-      `Role: ${payslip.role || '-'}`,
-      `Pay Grade: ${payslip.payGrade || '-'}`,
-      `Period: ${String(stub.period?.startDate || '')} to ${String(stub.period?.endDate || '')}`,
-      `Pay Date: ${payslip.payDate}`,
-      `Status: ${String(payslip.status || 'finalized').toUpperCase()}`,
-      '',
-      'EARNINGS',
-      `Base Salary: ${formatPayslipAmount(payslip.baseSalary, payslip.currency)}`,
-      `Housing Allowance: ${formatPayslipAmount(stub?.earnings?.housingAllowance || 0, payslip.currency)}`,
-      `Transport Allowance: ${formatPayslipAmount(stub?.earnings?.transportAllowance || 0, payslip.currency)}`,
-      `Meal Allowance: ${formatPayslipAmount(stub?.earnings?.mealAllowance || 0, payslip.currency)}`,
-      `Variable Pay: ${formatPayslipAmount(stub?.earnings?.variablePay || 0, payslip.currency)}`,
-      `Gross Pay: ${formatPayslipAmount(payslip.grossSalary, payslip.currency)}`,
-      '',
-      'DEDUCTIONS',
-      `PAYE: ${formatPayslipAmount(payslip.tax, payslip.currency)}`,
-      `Pension: ${formatPayslipAmount(payslip.pension, payslip.currency)}`,
-      `NHF: ${formatPayslipAmount(payslip.nhf, payslip.currency)}`,
-      `State Levy: ${formatPayslipAmount(payslip.stateLevy, payslip.currency)}`,
-      `LGA Levy: ${formatPayslipAmount(payslip.localLevy, payslip.currency)}`,
-      `Health Insurance: ${formatPayslipAmount(payslip.insurancePremium || 0, payslip.currency)}`,
-      `Other Deductions: ${formatPayslipAmount(payslip.otherDeductions || 0, payslip.currency)}`,
-      `Total Deductions: ${formatPayslipAmount(payslip.deductions, payslip.currency)}`,
-      '',
-      'NET PAY',
-      `Net Salary: ${formatPayslipAmount(payslip.netSalary, payslip.currency)}`,
-      '',
-      'EMPLOYER CONTRIBUTIONS',
-      `Employer Pension: ${formatPayslipAmount(payslip.employerPension || 0, payslip.currency)}`,
-      `Total Statutory Cost: ${formatPayslipAmount(payslip.employerStatutory || 0, payslip.currency)}`,
-    ];
-    return new Response(lines.join('\n'), {
-      headers: {
-        'Content-Type': 'text/plain',
-        'Content-Disposition': `attachment; filename="payslip-${payslipId}.txt"`,
-      },
-    });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-// ── Trainings ─────────────────────────────────────────────────────────────────
-
-const TRAININGS_KEY = 'staff-portal:trainings';
-const TRAINING_ENROLLMENTS_KEY = 'staff-portal:training-enrollments';
-
-async function loadTrainings(): Promise<any[]> {
-  return await kv.get(TRAININGS_KEY) || [];
-}
-async function loadEnrollments(): Promise<any[]> {
-  return await kv.get(TRAINING_ENROLLMENTS_KEY) || [];
-}
-
-app.get('/make-server-79198001/staff-portal/trainings/available', verifyStaffPortalAuth, async (c) => {
-  try {
-    const trainings = await loadTrainings();
-    const enrollments = await loadEnrollments();
-    const now = new Date().toISOString();
-    const available = trainings.filter((t: any) => {
-      if (t.status === 'cancelled') return false;
-      if (t.endDate && t.endDate < now.slice(0, 10)) return false;
-      return true;
-    }).map((t: any) => ({
-      ...t,
-      currentParticipants: enrollments.filter((e: any) => e.trainingId === t.id && e.status !== 'cancelled').length,
-    }));
-    return c.json({ trainings: available });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
-
-app.get('/make-server-79198001/staff-portal/trainings/my-trainings', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const enrollments = await loadEnrollments();
-    const trainings = await loadTrainings();
-    const myEnrollments = enrollments
-      .filter((e: any) => e.staffId === userId)
-      .map((e: any) => ({
-        ...e,
-        trainingTitle: trainings.find((t: any) => t.id === e.trainingId)?.title || e.trainingTitle,
+    // Create smart link
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .insert({
+        user_id: userId,
+        title,
+        artist_name: artistName,
+        slug: slug.toLowerCase(),
+        release_id: releaseId || null,
+        is_public: true,
+        status: 'active',
+        total_views: 0,
+        total_clicks: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .select()
+      .single();
+
+    if (linkError || !link) throw linkError;
+
+    // Insert services
+    if (services.length > 0) {
+      const serviceRecords = services.map((s: any) => ({
+        smart_link_id: link.id,
+        platform_key: s.platformKey || s.platform,
+        platform_name: s.platformName || s.platform,
+        platform_url: s.url,
+        display_order: s.displayOrder || 0,
+        enabled: true,
       }));
-    return c.json({ trainings: myEnrollments });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
-  }
-});
 
-app.post('/make-server-79198001/staff-portal/trainings/enroll', verifyStaffPortalAuth, async (c) => {
-  try {
-    const userId = c.get('userId');
-    const userEmail = c.get('userEmail');
-    const { trainingId } = await c.req.json();
-    if (!trainingId) return c.json({ error: 'trainingId is required' }, 400);
-
-    const trainings = await loadTrainings();
-    const training = trainings.find((t: any) => t.id === trainingId);
-    if (!training) return c.json({ error: 'Training not found' }, 404);
-
-    const enrollments = await loadEnrollments();
-    const already = enrollments.find((e: any) => e.staffId === userId && e.trainingId === trainingId && e.status !== 'cancelled');
-    if (already) return c.json({ error: 'Already enrolled' }, 400);
-
-    const currentCount = enrollments.filter((e: any) => e.trainingId === trainingId && e.status !== 'cancelled').length;
-    if (training.maxParticipants && currentCount >= training.maxParticipants) {
-      return c.json({ error: 'Training is full' }, 400);
+      await supabase.from('smart_link_services').insert(serviceRecords);
     }
 
-    const staff = await loadHrStaff();
-  const member = findHrStaffRecord(staff, userId, userEmail);
-    const enrollment = {
-      id: crypto.randomUUID(),
-      staffId: userId,
-      staffName: member?.fullName || 'Staff Member',
-      trainingId,
-      trainingTitle: training.title,
-      enrolledAt: new Date().toISOString(),
-      status: 'enrolled',
-    };
-    enrollments.push(enrollment);
-    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
-    return c.json({ enrollment }, 201);
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
+    // Insert settings
+    if (Object.keys(settings).length > 0) {
+      await supabase
+        .from('smart_link_settings')
+        .insert({
+          smart_link_id: link.id,
+          theme: settings.theme || 'light',
+          background_color: settings.backgroundColor,
+          button_style: settings.buttonStyle || 'pill',
+          show_artist_bio: settings.showArtistBio !== false,
+          show_cover_art: settings.showCoverArt !== false,
+        });
+    }
+
+    return c.json({ success: true, data: link }, 201);
+  } catch (error) {
+    console.error('Error creating smart link:', error);
+    return c.json({ error: `Failed to create smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-app.delete('/make-server-79198001/staff-portal/trainings/enroll/:id', verifyStaffPortalAuth, async (c) => {
+// PUT /smart-links/:id – Update smart link (AUTH REQUIRED)
+app.put("/make-server-79198001/smart-links/:id", verifyAuth, async (c) => {
   try {
     const userId = c.get('userId');
-    const id = c.req.param('id');
-    const enrollments = await loadEnrollments();
-    const idx = enrollments.findIndex((e: any) => e.id === id && e.staffId === userId);
-    if (idx === -1) return c.json({ error: 'Enrollment not found' }, 404);
-    enrollments[idx] = { ...enrollments[idx], status: 'cancelled', cancelledAt: new Date().toISOString() };
-    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
-    return c.json({ success: true });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
+    const linkId = c.req.param('id');
+    const body = await c.req.json();
+
+    // Verify ownership
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('user_id')
+      .eq('id', linkId)
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    if (link.user_id !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Update link
+    const { data: updated, error: updateError } = await supabase
+      .from('smart_links')
+      .update({
+        title: body.title,
+        artist_name: body.artistName,
+        artwork_url: body.artworkUrl,
+        status: body.status,
+        is_public: body.isPublic !== false,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', linkId)
+      .select()
+      .single();
+
+    if (updateError) throw updateError;
+
+    return c.json({ success: true, data: updated });
+  } catch (error) {
+    console.error('Error updating smart link:', error);
+    return c.json({ error: `Failed to update smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-app.post('/make-server-79198001/staff-portal/trainings/enroll/:id/feedback', verifyStaffPortalAuth, async (c) => {
+// DELETE /smart-links/:id – Delete smart link (AUTH REQUIRED)
+app.delete("/make-server-79198001/smart-links/:id", verifyAuth, async (c) => {
   try {
     const userId = c.get('userId');
-    const id = c.req.param('id');
-    const { score, feedback } = await c.req.json();
-    const enrollments = await loadEnrollments();
-    const idx = enrollments.findIndex((e: any) => e.id === id && e.staffId === userId);
-    if (idx === -1) return c.json({ error: 'Enrollment not found' }, 404);
-    enrollments[idx] = { ...enrollments[idx], score, feedback, status: 'completed', completedAt: new Date().toISOString() };
-    await kv.set(TRAINING_ENROLLMENTS_KEY, enrollments);
-    return c.json({ enrollment: enrollments[idx] });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
+    const linkId = c.req.param('id');
+
+    // Verify ownership
+    const { data: link, error: linkError } = await supabase
+      .from('smart_links')
+      .select('user_id')
+      .eq('id', linkId)
+      .single();
+
+    if (linkError || !link) {
+      return c.json({ error: 'Smart link not found' }, 404);
+    }
+
+    if (link.user_id !== userId) {
+      return c.json({ error: 'Unauthorized' }, 403);
+    }
+
+    // Delete services
+    await supabase
+      .from('smart_link_services')
+      .delete()
+      .eq('smart_link_id', linkId);
+
+    // Delete settings
+    await supabase
+      .from('smart_link_settings')
+      .delete()
+      .eq('smart_link_id', linkId);
+
+    // Delete link
+    const { error: deleteError } = await supabase
+      .from('smart_links')
+      .delete()
+      .eq('id', linkId);
+
+    if (deleteError) throw deleteError;
+
+    return c.json({ success: true, message: 'Smart link deleted' });
+  } catch (error) {
+    console.error('Error deleting smart link:', error);
+    return c.json({ error: `Failed to delete smart link: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// ── Admin: manage trainings ───────────────────────────────────────────────────
+// ==================== LYRICS SERVICE ROUTES ====================
 
-app.get('/make-server-79198001/admin/staff-portal/trainings', verifyAuth, verifyAdmin, async (c) => {
+function getSubmitterDisplayName(profile: { artistName?: string; labelName?: string; email: string }) {
+  return profile.artistName || profile.labelName || profile.email.split('@')[0];
+}
+
+async function findLiveTrackWithRelease(trackId: string) {
+  const track = await metadataService.getTrackById(trackId);
+  if (!track) return null;
+  const release = await metadataService.getReleaseById(track.releaseId);
+  if (!release) return null;
+  return { track, release };
+}
+
+// ── Public: search live tracks to attach a lyrics submission/request to ────
+
+app.get('/make-server-79198001/lyrics/search-tracks', async (c) => {
   try {
-    const trainings = await loadTrainings();
-    const enrollments = await loadEnrollments();
-    return c.json({
-      trainings: trainings.map((t: any) => ({
-        ...t,
-        currentParticipants: enrollments.filter((e: any) => e.trainingId === t.id && e.status !== 'cancelled').length,
-      })),
+    const query = (c.req.query('query') || '').trim().toLowerCase();
+    const releaseKeys = await kv.getEntriesByPrefix('release:user:');
+    const results: Array<{ trackId: string; title: string; artistName: string; albumName: string; artworkUrl: string; genre?: string; releaseDate?: string }> = [];
+
+    for (const key of releaseKeys) {
+      if (results.length >= 20) break;
+      const releaseId = key?.key?.split(':').pop();
+      if (!releaseId) continue;
+
+      const release = await metadataService.getReleaseById(releaseId);
+      if (!release || release.status !== 'live') continue;
+
+      if (query && !release.title.toLowerCase().includes(query) && !release.primaryArtist.toLowerCase().includes(query)) {
+        continue;
+      }
+
+      const tracks = await metadataService.getReleaseTracks(release.id);
+      for (const track of tracks) {
+        if (results.length >= 20) break;
+        if (query && !release.primaryArtist.toLowerCase().includes(query) && !track.title.toLowerCase().includes(query)) {
+          continue;
+        }
+        results.push({
+          trackId: track.id,
+          title: track.title,
+          artistName: release.primaryArtist,
+          albumName: release.title,
+          artworkUrl: release.artworkUrl,
+          genre: track.genre || release.genre,
+          releaseDate: release.releaseDate,
+        });
+      }
+    }
+
+    return c.json({ tracks: results });
+  } catch (error) {
+    console.error('Error searching tracks for lyrics:', error);
+    return c.json({ error: `Failed to search tracks: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public lyrics catalog (real data, no auth required) ────────────────────
+
+app.get('/make-server-79198001/lyrics/public', async (c) => {
+  try {
+    const sort = c.req.query('sort');
+    const limit = c.req.query('limit') ? Number(c.req.query('limit')) : undefined;
+
+    if (sort === 'trending') {
+      const lyrics = await lyricsService.getTrendingLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    if (sort === 'latest') {
+      const lyrics = await lyricsService.getLatestLyrics(limit || 4);
+      return c.json({ data: lyrics, count: lyrics.length });
+    }
+
+    const result = await lyricsService.getLyricsPublic({
+      search: c.req.query('search') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      limit,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
     });
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching public lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-app.post('/make-server-79198001/admin/staff-portal/trainings', verifyAuth, verifyAdmin, async (c) => {
+app.get('/make-server-79198001/lyrics/public/artist/:artistSlug', async (c) => {
+  try {
+    const artistSlug = c.req.param('artistSlug');
+    const result = await lyricsService.getLyricsArtist(artistSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching artist lyrics:', error);
+    return c.json({ error: `Failed to fetch artist lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/album/:albumSlug', async (c) => {
+  try {
+    const albumSlug = c.req.param('albumSlug');
+    const result = await lyricsService.getLyricsAlbum(albumSlug, {
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+    });
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching album lyrics:', error);
+    return c.json({ error: `Failed to fetch album lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/public/:lyricsId', async (c) => {
+  try {
+    const lyricsId = c.req.param('lyricsId');
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+
+    if (!lyrics || !lyrics.is_published || lyrics.verification_status !== 'verified') {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    void lyricsService.incrementLyricsView(lyricsId);
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Public (anonymous): submit lyrics or request lyrics for a live track ───
+
+app.post('/make-server-79198001/lyrics/public/submit', async (c) => {
   try {
     const body = await c.req.json();
-    if (!body.title || !body.startDate) return c.json({ error: 'title and startDate are required' }, 400);
-    const trainings = await loadTrainings();
-    const training = {
-      id: crypto.randomUUID(),
-      title: body.title,
-      description: body.description || '',
-      category: body.category || 'general',
-      instructor: body.instructor || '',
-      startDate: body.startDate,
-      endDate: body.endDate || body.startDate,
-      duration: body.duration || 1,
-      location: body.location || '',
-      isOnline: body.isOnline ?? false,
-      meetingLink: body.meetingLink || '',
-      maxParticipants: body.maxParticipants || null,
-      currentParticipants: 0,
-      status: 'scheduled',
-      tags: body.tags || [],
-      createdAt: new Date().toISOString(),
-    };
-    trainings.unshift(training);
-    await kv.set(TRAININGS_KEY, trainings);
-    return c.json({ training }, 201);
-  } catch (err) {
-    return c.json({ error: (err as Error).message }, 500);
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Please choose which song this is for' }, 400);
+    }
+
+    const isRequest = body.mode === 'request';
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim().slice(0, 20000) : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim().slice(0, 2000) : '';
+    const submitterName = typeof body.submitterName === 'string' ? body.submitterName.trim().slice(0, 120) : undefined;
+    const submitterEmail = typeof body.submitterEmail === 'string' ? body.submitterEmail.trim().slice(0, 200) : undefined;
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const found = await findLiveTrackWithRelease(body.trackId);
+    if (!found || found.release.status !== 'live') {
+      return c.json({ error: 'This song is not available for lyrics submissions yet' }, 404);
+    }
+
+    const { track, release } = found;
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: release.primaryArtist,
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Public lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: isRequest ? 'public-request' : 'public-submission',
+      copyright_status: 'review-required',
+      submitter_name: submitterName,
+      submitter_email: submitterEmail,
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting public lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// END STAFF PORTAL ENDPOINTS
-// ═══════════════════════════════════════════════════════════════════════════
+// ── Signed-in user: submit lyrics or request lyrics for one of their tracks ─
+
+app.post('/make-server-79198001/lyrics', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    const isRequest = body.isRequest === true;
+    const lyricsText = typeof body.lyricsText === 'string' ? body.lyricsText.trim() : '';
+    const requestNote = typeof body.requestNote === 'string' ? body.requestNote.trim() : '';
+
+    if (isRequest && requestNote.length < 10) {
+      return c.json({ error: 'Please describe your lyrics request in at least 10 characters' }, 400);
+    }
+
+    if (!isRequest && !lyricsText) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+    if (!release || release.userId !== userId) {
+      return c.json({ error: 'Unauthorized: You do not own this track' }, 403);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      artist_id: profile.id,
+      release_id: release.id,
+      title: track.title,
+      artist_name: getSubmitterDisplayName(profile),
+      album_name: release.title,
+      lyrics_text: isRequest ? `[Lyrics request]\n${requestNote}` : lyricsText,
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release.upc,
+      genre: track.genre || release.genre,
+      release_date: release.releaseDate,
+      artwork_url: release.artworkUrl,
+      source: 'artist-submission',
+      copyright_status: 'review-required',
+      request_note: isRequest ? requestNote : undefined,
+    });
+
+    return c.json({ lyrics, isRequest });
+  } catch (error) {
+    console.error('Error submitting lyrics:', error);
+    return c.json({ error: `Failed to submit lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Signed-in user: list their own lyrics submissions/requests
+app.get('/make-server-79198001/lyrics/mine', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile) {
+      return c.json({ error: 'User profile not found' }, 404);
+    }
+
+    const result = await lyricsService.getLyricsByArtistId(profile.id, {
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching your lyrics:', error);
+    return c.json({ error: `Failed to fetch your lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.get('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error fetching lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    const updates: Record<string, any> = {};
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) updates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.language === 'string' && body.language.trim()) updates.lyrics_language = body.language.trim();
+    if (typeof body.genre === 'string' && body.genre.trim()) updates.genre = body.genre.trim();
+
+    // Editing previously published/verified content sends it back for admin review.
+    if (lyrics.is_published || lyrics.verification_status === 'verified') {
+      updates.is_published = false;
+      updates.verification_status = 'pending';
+    }
+
+    const updatedLyrics = await lyricsService.updateLyrics(lyricsId, updates);
+
+    return c.json({ lyrics: updatedLyrics });
+  } catch (error) {
+    console.error('Error updating lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/lyrics/:lyricsId', verifyAuth, async (c) => {
+  try {
+    const userId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const profile = await userService.getUserByUserId(userId);
+    if (!profile || lyrics.artist_id !== profile.id) {
+      return c.json({ error: 'Unauthorized: You do not own these lyrics' }, 403);
+    }
+
+    if (lyrics.is_published) {
+      return c.json({ error: 'This lyrics entry is already published. Contact support to remove it.' }, 400);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// ── Admin: manage all lyrics submissions and requests ───────────────────────
+
+app.get('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.view'), async (c) => {
+  try {
+    const isPublishedParam = c.req.query('isPublished');
+    const result = await lyricsService.getLyricsAdmin({
+      verificationStatus: c.req.query('verificationStatus') || undefined,
+      genre: c.req.query('genre') || undefined,
+      language: c.req.query('language') || undefined,
+      artistName: c.req.query('artistName') || undefined,
+      search: c.req.query('search') || undefined,
+      isPublished: isPublishedParam === 'true' ? true : isPublishedParam === 'false' ? false : undefined,
+      limit: c.req.query('limit') ? Number(c.req.query('limit')) : undefined,
+      offset: c.req.query('offset') ? Number(c.req.query('offset')) : undefined,
+    });
+
+    return c.json(result);
+  } catch (error) {
+    console.error('Error fetching admin lyrics:', error);
+    return c.json({ error: `Failed to fetch lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+// Admin: directly add lyrics for any track (import / on behalf of an artist)
+app.post('/make-server-79198001/admin/lyrics', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const body = await c.req.json();
+
+    if (!body.trackId || typeof body.trackId !== 'string') {
+      return c.json({ error: 'Track ID is required' }, 400);
+    }
+
+    if (!body.lyricsText || typeof body.lyricsText !== 'string' || !body.lyricsText.trim()) {
+      return c.json({ error: 'Lyrics content is required' }, 400);
+    }
+
+    const track = await metadataService.getTrackById(body.trackId);
+    if (!track) {
+      return c.json({ error: 'Track not found' }, 404);
+    }
+
+    const release = await metadataService.getReleaseById(track.releaseId);
+
+    const lyrics = await lyricsService.createLyrics({
+      track_id: track.id,
+      release_id: release?.id,
+      title: typeof body.title === 'string' && body.title.trim() ? body.title.trim() : track.title,
+      artist_name: typeof body.artistName === 'string' && body.artistName.trim() ? body.artistName.trim() : (release?.primaryArtist || 'Unknown artist'),
+      album_name: typeof body.albumName === 'string' && body.albumName.trim() ? body.albumName.trim() : release?.title,
+      lyrics_text: body.lyricsText.trim(),
+      lyrics_language: typeof body.language === 'string' && body.language.trim() ? body.language.trim() : 'English',
+      isrc: track.isrc,
+      upc: release?.upc,
+      genre: typeof body.genre === 'string' && body.genre.trim() ? body.genre.trim() : (track.genre || release?.genre),
+      release_date: release?.releaseDate,
+      artwork_url: release?.artworkUrl,
+      source: 'admin-import',
+      copyright_status: 'cleared',
+    });
+
+    await adminService.logAdminAction(adminUserId, 'create', 'lyrics', lyrics?.id || track.id, { trackId: track.id });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error creating admin lyrics:', error);
+    return c.json({ error: `Failed to create lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.put('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.edit'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+    const body = await c.req.json();
+
+    let lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    if (body.verificationStatus === 'verified') {
+      lyrics = await lyricsService.verifyLyrics(lyricsId);
+    } else if (body.verificationStatus === 'rejected') {
+      lyrics = await lyricsService.rejectLyrics(lyricsId);
+    }
+
+    if (body.isPublished === true) {
+      lyrics = await lyricsService.publishLyrics(lyricsId);
+    } else if (body.isPublished === false) {
+      lyrics = await lyricsService.unpublishLyrics(lyricsId);
+    }
+
+    const fieldUpdates: Record<string, any> = {};
+    if (typeof body.title === 'string' && body.title.trim()) fieldUpdates.title = body.title.trim();
+    if (typeof body.lyricsText === 'string' && body.lyricsText.trim()) fieldUpdates.lyrics_text = body.lyricsText.trim();
+    if (typeof body.albumName === 'string') fieldUpdates.album_name = body.albumName.trim();
+    if (typeof body.genre === 'string') fieldUpdates.genre = body.genre.trim();
+    if (typeof body.language === 'string' && body.language.trim()) fieldUpdates.lyrics_language = body.language.trim();
+    if (typeof body.artworkUrl === 'string') fieldUpdates.artwork_url = body.artworkUrl.trim();
+    if (typeof body.copyrightStatus === 'string') fieldUpdates.copyright_status = body.copyrightStatus;
+
+    if (Object.keys(fieldUpdates).length > 0) {
+      lyrics = await lyricsService.updateLyrics(lyricsId, fieldUpdates);
+    }
+
+    await adminService.logAdminAction(adminUserId, 'update', 'lyrics', lyricsId, { changes: body });
+
+    return c.json({ lyrics });
+  } catch (error) {
+    console.error('Error updating admin lyrics:', error);
+    return c.json({ error: `Failed to update lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
+
+app.delete('/make-server-79198001/admin/lyrics/:lyricsId', verifyAuth, verifyAdmin, requirePermission('releases.delete'), async (c) => {
+  try {
+    const adminUserId = c.get('userId');
+    const lyricsId = c.req.param('lyricsId');
+
+    const lyrics = await lyricsService.getLyricsById(lyricsId);
+    if (!lyrics) {
+      return c.json({ error: 'Lyrics not found' }, 404);
+    }
+
+    const deleted = await lyricsService.deleteLyrics(lyricsId);
+
+    await adminService.logAdminAction(adminUserId, 'delete', 'lyrics', lyricsId, { lyrics });
+
+    return c.json({ success: deleted });
+  } catch (error) {
+    console.error('Error deleting admin lyrics:', error);
+    return c.json({ error: `Failed to delete lyrics: ${error instanceof Error ? error.message : 'Unknown error'}` }, 500);
+  }
+});
 
 Deno.serve(app.fetch);
