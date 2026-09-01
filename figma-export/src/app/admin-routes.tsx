@@ -58,14 +58,20 @@ function withSuspense(element: React.ReactNode) {
 }
 
 // Protected Route Component
+// SECURITY FIX #1: Render nothing (blank page) while auth check is in progress.
+// This prevents admin UI code from executing before authentication is verified.
+// Once auth is verified, normal redirect logic applies.
 function ProtectedAdminRoute({ children }: { children: React.ReactNode }) {
   const { adminUser, isLoading } = useAdmin();
   const location = useLocation();
 
+  // AUTH GATE: During auth check, render absolutely nothing (not even a spinner).
+  // This ensures no admin UI logic runs until server confirms admin status.
   if (isLoading) {
-    return <RouteTransitionLoader />;
+    return null; // ← BLANK PAGE during auth verification (was: <RouteTransitionLoader />)
   }
 
+  // If auth check completed and no admin user found, redirect to login
   if (!adminUser) {
     return <Navigate to="/admin/login" replace />;
   }

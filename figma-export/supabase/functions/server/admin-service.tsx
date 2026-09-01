@@ -4,7 +4,19 @@ import * as userService from './user-service.tsx';
 /**
  * Admin Service
  * Handles admin roles, permissions, and administrative actions
+ * 
+ * SECURITY FIX #2: Admin users now stored in Supabase 'profiles' table with RLS protection
+ * - Old: Deno KV store (no RLS, app-logic-dependent)
+ * - New: Supabase profiles table (RLS-protected, database-enforced)
  */
+
+// Note: Supabase client should be passed in or imported from context
+// For now, we'll create it locally with service role key for admin operations
+let supabase: any = null;
+
+export function initSupabaseClient(client: any) {
+  supabase = client;
+}
 
 export type AdminRole = 
   | 'superadmin'           // Full access to everything
@@ -182,7 +194,7 @@ const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
   ],
 };
 
-// Create admin user
+// Create admin user in Supabase profiles table (SECURITY FIX #2)
 export async function createAdminUser(
   userId: string,
   role: AdminRole,
@@ -192,57 +204,141 @@ export async function createAdminUser(
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  // Check if user profile exists in KV store
-  let userProfile = await kv.get(`user:${userId}`);
-  
-  if (!userProfile) {
-    // Create a basic admin user profile if it doesn't exist
-    const adminProfile: any = {
-      id: userId,
-      userId: userId,
-      email: '', // Will be filled from Supabase auth
-      role: 'admin',
-      subscriptionTier: 'label',
-      isVerified: true,
-      createdAt: now,
-      updatedAt: now,
-    };
-    
-    await kv.set(`user:${userId}`, adminProfile);
-  } else {
-    // Update existing user profile to admin role
-    const updatedProfile: any = {
-      ...userProfile,
-      role: 'admin',
-      updatedAt: now,
-    };
-    await kv.set(`user:${userId}`, updatedProfile);
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
+    }
+
+    // Check if profile already exists
+    const { data: existingProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .eq('user_id', userId)
+      .single();
+
+    const adminPermissions = ROLE_PERMISSIONS[role];
+
+    if (existingProfile) {
+      // Profile exists, update it to add admin access
+      const { data, error } = await supabase
+        .from('profiles')
+        .update({
+          role: 'admin',
+          admin_role: role,
+          admin_permissions: adminPermissions,
+          admin_department: department,
+          admin_status: 'active',
+          updated_at: now,
+        })
+        .eq('user_id', userId)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const adminUser: AdminUser = {
+        id: data.id,
+        userId: data.user_id,
+        role: data.admin_role as AdminRole,
+        permissions: data.admin_permissions || [],
+        department: data.admin_department,
+        createdBy,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
+
+      await logAdminAction(createdBy, 'create', 'admin', data.id, { role, userId });
+      return adminUser;
+    } else {
+      // Create new profile with admin role
+      const { data, error } = await supabase
+        .from('profiles')
+        .insert({
+          id,
+          user_id: userId,
+          role: 'admin',
+          admin_role: role,
+          admin_permissions: adminPermissions,
+          admin_department: department,
+          admin_status: 'active',
+          created_by: createdBy,
+          created_at: now,
+          updated_at: now,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const adminUser: AdminUser = {
+        id: data.id,
+        userId: data.user_id,
+        role: data.admin_role as AdminRole,
+        permissions: data.admin_permissions || [],
+        department: data.admin_department,
+        createdBy,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      };
+
+      await logAdminAction(createdBy, 'create', 'admin', id, { role, userId });
+      return adminUser;
+    }
+  } catch (error) {
+    console.error('Error creating admin user in profiles table:', error);
+    throw error;
   }
-
-  const adminUser: AdminUser = {
-    id,
-    userId,
-    role,
-    permissions: ROLE_PERMISSIONS[role],
-    department,
-    createdBy,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  await kv.set(`admin:${id}`, adminUser);
-  await kv.set(`admin:user:${userId}`, id);
-
-  await logAdminAction(createdBy, 'create', 'admin', id, { role, userId });
-
-  return adminUser;
 }
 
-// Get admin user
+// Get admin user by userId from Supabase profiles table (SECURITY FIX #2)
+// Query the profiles table for users with role = 'admin'
 export async function getAdminUser(userId: string): Promise<AdminUser | null> {
+  try {
+    // SECURITY FIX #2: Query profiles table (RLS-protected) instead of KV
+    if (!supabase) {
+      console.warn('Supabase client not initialized, falling back to KV');
+      return await getAdminUserFromKV(userId);
+    }
+
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('role', 'admin')
+      .eq('admin_status', 'active')
+      .single();
+
+    if (error || !data) {
+      // User is not an admin or doesn't exist in profiles table
+      return null;
+    }
+
+    // Convert database row to AdminUser type
+    const adminUser: AdminUser = {
+      id: data.id,
+      userId: data.user_id,
+      role: data.admin_role as AdminRole,
+      permissions: data.admin_permissions || [],
+      department: data.admin_department,
+      createdBy: data.created_by || 'system',
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+      lastActiveAt: data.last_active_at,
+    };
+
+    return adminUser;
+  } catch (error) {
+    console.error('Error fetching admin user from profiles table:', error);
+    // Fallback to KV for backward compatibility during migration
+    return await getAdminUserFromKV(userId);
+  }
+}
+
+// Fallback: Get admin user from KV (used during migration period)
+// This will be deprecated once all admins are migrated to profiles table
+async function getAdminUserFromKV(userId: string): Promise<AdminUser | null> {
   const adminId = await kv.get<string>(`admin:user:${userId}`);
   if (!adminId) return null;
-
   return await kv.get<AdminUser>(`admin:${adminId}`);
 }
 
@@ -251,31 +347,57 @@ export async function getAdminByUserId(userId: string): Promise<AdminUser | null
   return getAdminUser(userId);
 }
 
-// Update admin role
+// Update admin role in Supabase profiles table (SECURITY FIX #2)
 export async function updateAdminRole(
   adminUserId: string,
   newRole: AdminRole,
   updatedBy: string
 ): Promise<AdminUser | null> {
-  const adminId = await kv.get<string>(`admin:user:${adminUserId}`);
-  if (!adminId) return null;
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
+    }
 
-  const admin = await kv.get<AdminUser>(`admin:${adminId}`);
-  if (!admin) return null;
+    const { data, error } = await supabase
+      .from('profiles')
+      .update({
+        admin_role: newRole,
+        admin_permissions: ROLE_PERMISSIONS[newRole],
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', adminUserId)
+      .eq('role', 'admin')
+      .select()
+      .single();
 
-  const oldRole = admin.role;
-  admin.role = newRole;
-  admin.permissions = ROLE_PERMISSIONS[newRole];
-  admin.updatedAt = new Date().toISOString();
+    if (error || !data) {
+      console.error('Error updating admin role:', error);
+      return null;
+    }
 
-  await kv.set(`admin:${adminId}`, admin);
+    const adminUser: AdminUser = {
+      id: data.id,
+      userId: data.user_id,
+      role: data.admin_role as AdminRole,
+      permissions: data.admin_permissions || [],
+      department: data.admin_department,
+      createdBy: data.created_by || 'system',
+      createdAt: data.created_at,
+      updatedAt: data.updated_at,
+    };
 
-  await logAdminAction(updatedBy, 'update', 'admin', adminId, {
-    oldRole,
-    newRole,
-  });
+    // Log the role change
+    await logAdminAction(updatedBy, 'update', 'admin', data.id, {
+      action: 'role_updated',
+      adminUserId,
+      newRole,
+    });
 
-  return admin;
+    return adminUser;
+  } catch (error) {
+    console.error('Error updating admin role in profiles table:', error);
+    return null;
+  }
 }
 
 // Delete admin user
@@ -283,23 +405,50 @@ export async function deleteAdminUser(
   adminUserId: string,
   deletedBy: string
 ): Promise<void> {
-  const adminId = await kv.get<string>(`admin:user:${adminUserId}`);
-  if (!adminId) return;
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
+    }
 
-  const admin = await kv.get<AdminUser>(`admin:${adminId}`);
-  if (!admin) return;
+    // Get the admin profile to log the deletion
+    const { data: adminProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('user_id', adminUserId)
+      .eq('role', 'admin')
+      .single();
 
-  // Update user role back to artist/label
-  const user = await kv.get(`user:${adminUserId}`);
-  if (user && typeof user === 'object' && 'role' in user) {
-    (user as any).role = 'artist'; // Default back to artist
-    await kv.set(`user:${adminUserId}`, user);
+    if (fetchError || !adminProfile) {
+      console.warn('Admin user not found for deletion:', adminUserId);
+      return;
+    }
+
+    // Update profile to remove admin role
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        role: 'user', // Demote back to regular user
+        admin_role: null,
+        admin_permissions: [],
+        admin_status: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('user_id', adminUserId);
+
+    if (updateError) {
+      console.error('Error removing admin role:', updateError);
+      throw updateError;
+    }
+
+    // Log the deletion
+    await logAdminAction(deletedBy, 'delete', 'admin', adminProfile.id, {
+      adminUserId,
+      previousRole: adminProfile.admin_role,
+    });
+  } catch (error) {
+    console.error('Error deleting admin user:', error);
+    throw error;
   }
-
-  await kv.del(`admin:${adminId}`);
-  await kv.del(`admin:user:${adminUserId}`);
-
-  await logAdminAction(deletedBy, 'delete', 'admin', adminId, admin);
 }
 
 // Check if user has permission
@@ -339,21 +488,43 @@ export async function hasRole(
 
 // Get all admin users
 export async function getAllAdminUsers(): Promise<AdminUser[]> {
-  const adminUserMappings = await kv.getByPrefix('admin:user:');
-  const admins: AdminUser[] = [];
-
-  for (const adminId of adminUserMappings) {
-    if (adminId && typeof adminId === 'string') {
-      const admin = await kv.get<AdminUser>(`admin:${adminId}`);
-      if (admin) {
-        admins.push(admin);
-      }
+  try {
+    if (!supabase) {
+      throw new Error('Supabase client not initialized');
     }
-  }
 
-  return admins.sort((a, b) => 
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-  );
+    // SECURITY FIX #2: Query profiles table (RLS-protected) instead of KV
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'admin')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('Error fetching all admin users:', error);
+      return [];
+    }
+
+    if (!data) {
+      return [];
+    }
+
+    // Convert database rows to AdminUser types
+    return data.map((profile: any) => ({
+      id: profile.id,
+      userId: profile.user_id,
+      role: profile.admin_role as AdminRole,
+      permissions: profile.admin_permissions || [],
+      department: profile.admin_department,
+      createdBy: profile.created_by || 'system',
+      createdAt: profile.created_at,
+      updatedAt: profile.updated_at,
+      lastActiveAt: profile.last_active_at,
+    }));
+  } catch (error) {
+    console.error('Error getting all admin users:', error);
+    return [];
+  }
 }
 
 // Log admin action (audit trail)

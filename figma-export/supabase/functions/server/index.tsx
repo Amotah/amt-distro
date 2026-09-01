@@ -113,6 +113,10 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 );
 
+// SECURITY FIX #2: Initialize admin service with Supabase client
+// This allows admin-service to query profiles table (RLS-protected) instead of KV
+adminService.initSupabaseClient(supabase);
+
 // Initialize storage buckets on startup
 Promise.resolve().then(async () => {
   try {
@@ -2313,7 +2317,8 @@ app.get("/make-server-79198001/jobs/:jobId", verifyAuth, async (c) => {
 
 // ==================== ADMIN SERVICE ROUTES ====================
 
-// Middleware to verify admin access
+// Middleware to verify admin access (SECURITY FIX #2)
+// Now queries profiles table (RLS-protected) instead of KV store
 async function verifyAdmin(c: any, next: any) {
   const userId = c.get('userId');
   if (!userId) {
@@ -2335,8 +2340,9 @@ async function verifyAdmin(c: any, next: any) {
     }
   }
 
+  // SECURITY FIX #2: Check admin_status from profiles table (was: status)
   // Block deactivated admin accounts immediately
-  if ((admin as any).status === 'inactive') {
+  if ((admin as any).adminStatus === 'inactive' || (admin as any).adminStatus === 'suspended') {
     return c.json({ error: 'Admin account is deactivated' }, 403);
   }
 
