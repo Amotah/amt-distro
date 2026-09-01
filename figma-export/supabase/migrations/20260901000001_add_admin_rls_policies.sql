@@ -6,6 +6,7 @@
 -- 1. ADMIN ACCESS POLICY FOR SMART_LINKS TABLE
 -- ====================================================================
 -- Admins can view all smart links (not just their own)
+DROP POLICY IF EXISTS "Admins can view all smart links" ON public.smart_links;
 CREATE POLICY "Admins can view all smart links"
   ON public.smart_links
   FOR SELECT
@@ -17,6 +18,7 @@ CREATE POLICY "Admins can view all smart links"
   );
 
 -- Admins can update any smart link
+DROP POLICY IF EXISTS "Admins can update any smart link" ON public.smart_links;
 CREATE POLICY "Admins can update any smart link"
   ON public.smart_links
   FOR UPDATE
@@ -28,6 +30,7 @@ CREATE POLICY "Admins can update any smart link"
   );
 
 -- Admins can delete any smart link
+DROP POLICY IF EXISTS "Admins can delete any smart link" ON public.smart_links;
 CREATE POLICY "Admins can delete any smart link"
   ON public.smart_links
   FOR DELETE
@@ -42,6 +45,7 @@ CREATE POLICY "Admins can delete any smart link"
 -- 2. ADMIN ACCESS POLICY FOR SMART_LINK_SERVICES TABLE
 -- ====================================================================
 -- Admins can view all services
+DROP POLICY IF EXISTS "Admins can view all smart link services" ON public.smart_link_services;
 CREATE POLICY "Admins can view all smart link services"
   ON public.smart_link_services
   FOR SELECT
@@ -53,6 +57,7 @@ CREATE POLICY "Admins can view all smart link services"
   );
 
 -- Admins can update services
+DROP POLICY IF EXISTS "Admins can update smart link services" ON public.smart_link_services;
 CREATE POLICY "Admins can update smart link services"
   ON public.smart_link_services
   FOR UPDATE
@@ -64,6 +69,7 @@ CREATE POLICY "Admins can update smart link services"
   );
 
 -- Admins can delete services
+DROP POLICY IF EXISTS "Admins can delete smart link services" ON public.smart_link_services;
 CREATE POLICY "Admins can delete smart link services"
   ON public.smart_link_services
   FOR DELETE
@@ -78,6 +84,7 @@ CREATE POLICY "Admins can delete smart link services"
 -- 3. ADMIN ACCESS POLICY FOR SMART_LINK_SETTINGS TABLE
 -- ====================================================================
 -- Admins can view all settings
+DROP POLICY IF EXISTS "Admins can view all smart link settings" ON public.smart_link_settings;
 CREATE POLICY "Admins can view all smart link settings"
   ON public.smart_link_settings
   FOR SELECT
@@ -89,6 +96,7 @@ CREATE POLICY "Admins can view all smart link settings"
   );
 
 -- Admins can update settings
+DROP POLICY IF EXISTS "Admins can update smart link settings" ON public.smart_link_settings;
 CREATE POLICY "Admins can update smart link settings"
   ON public.smart_link_settings
   FOR UPDATE
@@ -100,6 +108,7 @@ CREATE POLICY "Admins can update smart link settings"
   );
 
 -- Admins can delete settings
+DROP POLICY IF EXISTS "Admins can delete smart link settings" ON public.smart_link_settings;
 CREATE POLICY "Admins can delete smart link settings"
   ON public.smart_link_settings
   FOR DELETE
@@ -115,7 +124,8 @@ CREATE POLICY "Admins can delete smart link settings"
 -- ====================================================================
 -- Note: Only add if table exists and has RLS enabled
 -- Admins can view all DSP URLs
-CREATE POLICY IF NOT EXISTS "Admins can view all release DSP URLs"
+DROP POLICY IF EXISTS "Admins can view all release DSP URLs" ON public.release_dsp_urls;
+CREATE POLICY "Admins can view all release DSP URLs"
   ON public.release_dsp_urls
   FOR SELECT
   USING (
@@ -126,7 +136,8 @@ CREATE POLICY IF NOT EXISTS "Admins can view all release DSP URLs"
   );
 
 -- Admins can update DSP URLs
-CREATE POLICY IF NOT EXISTS "Admins can update release DSP URLs"
+DROP POLICY IF EXISTS "Admins can update release DSP URLs" ON public.release_dsp_urls;
+CREATE POLICY "Admins can update release DSP URLs"
   ON public.release_dsp_urls
   FOR UPDATE
   USING (
@@ -140,7 +151,8 @@ CREATE POLICY IF NOT EXISTS "Admins can update release DSP URLs"
 -- 5. ADMIN ACCESS POLICY FOR LYRICS TABLE (if exists)
 -- ====================================================================
 -- Admins can view all lyrics
-CREATE POLICY IF NOT EXISTS "Admins can view all lyrics"
+DROP POLICY IF EXISTS "Admins can view all lyrics" ON public.lyrics;
+CREATE POLICY "Admins can view all lyrics"
   ON public.lyrics
   FOR SELECT
   USING (
@@ -151,7 +163,8 @@ CREATE POLICY IF NOT EXISTS "Admins can view all lyrics"
   );
 
 -- Admins can update lyrics
-CREATE POLICY IF NOT EXISTS "Admins can update lyrics"
+DROP POLICY IF EXISTS "Admins can update lyrics" ON public.lyrics;
+CREATE POLICY "Admins can update lyrics"
   ON public.lyrics
   FOR UPDATE
   USING (
@@ -165,7 +178,8 @@ CREATE POLICY IF NOT EXISTS "Admins can update lyrics"
 -- 6. ADMIN ACCESS POLICY FOR SMART_LINK_CLICK_EVENTS TABLE
 -- ====================================================================
 -- Admins can view all click events for analytics
-CREATE POLICY IF NOT EXISTS "Admins can view all click events"
+DROP POLICY IF EXISTS "Admins can view all click events" ON public.smart_link_click_events;
+CREATE POLICY "Admins can view all click events"
   ON public.smart_link_click_events
   FOR SELECT
   USING (
@@ -179,7 +193,8 @@ CREATE POLICY IF NOT EXISTS "Admins can view all click events"
 -- 7. ADMIN ACCESS POLICY FOR LISTENER_STREAMS TABLE (if exists)
 -- ====================================================================
 -- Admins can view all streams for analytics
-CREATE POLICY IF NOT EXISTS "Admins can view all listener streams"
+DROP POLICY IF EXISTS "Admins can view all listener streams" ON public.listener_streams;
+CREATE POLICY "Admins can view all listener streams"
   ON public.listener_streams
   FOR SELECT
   USING (

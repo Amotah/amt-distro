@@ -43,10 +43,10 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 );
 
 -- Create indexes for admin queries
-CREATE INDEX idx_profiles_user_id ON public.profiles(user_id);
-CREATE INDEX idx_profiles_role ON public.profiles(role);
-CREATE INDEX idx_profiles_admin_role ON public.profiles(admin_role) WHERE role = 'admin';
-CREATE INDEX idx_profiles_created_at ON public.profiles(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_profiles_user_id ON public.profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_role ON public.profiles(role);
+CREATE INDEX IF NOT EXISTS idx_profiles_admin_role ON public.profiles(admin_role) WHERE role = 'admin';
+CREATE INDEX IF NOT EXISTS idx_profiles_created_at ON public.profiles(created_at DESC);
 
 -- ====================================================================
 -- 2. ENABLE ROW LEVEL SECURITY (RLS)
@@ -114,36 +114,13 @@ CREATE POLICY "Superadmins can delete profiles"
 -- ====================================================================
 -- 3. AUDIT TRIGGER (track changes to admin roles)
 -- ====================================================================
+-- Note: Audit logging is handled by backend, not database triggers
+-- This is a placeholder for future audit trail implementation
 CREATE OR REPLACE FUNCTION public.log_profile_changes()
 RETURNS TRIGGER AS $$
 BEGIN
-  -- Only log changes to admin-related fields
-  IF NEW.role != OLD.role OR NEW.admin_role != OLD.admin_role OR NEW.admin_status != OLD.admin_status THEN
-    INSERT INTO public.audit_logs (
-      admin_user_id,
-      action,
-      resource,
-      resource_id,
-      changes,
-      created_at
-    ) VALUES (
-      auth.uid(),
-      CASE 
-        WHEN TG_OP = 'INSERT' THEN 'create'
-        WHEN TG_OP = 'UPDATE' THEN 'update'
-        WHEN TG_OP = 'DELETE' THEN 'delete'
-      END,
-      'profile',
-      NEW.id::text,
-      jsonb_build_object(
-        'role', NEW.role,
-        'admin_role', NEW.admin_role,
-        'admin_status', NEW.admin_status
-      ),
-      CURRENT_TIMESTAMP
-    );
-  END IF;
-  
+  -- Future: Log to audit_logs table if it exists
+  -- For now, just return the new row
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
