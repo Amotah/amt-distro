@@ -130,95 +130,42 @@ export function AdminProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       
-      // Check if there's an admin access token in sessionStorage
-      const adminToken = sessionStorage.getItem('admin_access_token');
-      const userRole = sessionStorage.getItem('user_role');
+      // ALWAYS check Supabase session first - this is the source of truth
+      const { data: { session } } = await supabase.auth.getSession();
       
-      if (!adminToken || userRole !== 'admin') {
-        // Check regular session
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!session) {
-          setAdminUser(null);
-          clearAdminSession();
-          setIsLoading(false);
-          return;
-        }
+      // If no valid Supabase session, user is NOT authenticated
+      if (!session) {
+        setAdminUser(null);
+        clearAdminSession();
+        setIsLoading(false);
+        return;
+      }
 
-        if (session.user.user_metadata?.mustChangePassword === true) {
-          sessionStorage.setItem('mustChangePassword', 'true');
-        } else {
-          sessionStorage.removeItem('mustChangePassword');
-        }
-
-        // Store token
-        adminApi.setAdminToken(session.access_token);
-
-        try {
-          const currentAdmin = await adminApi.getCurrentAdminUser();
-          setAdminUser(currentAdmin);
-          persistAdminSession(currentAdmin, session.access_token);
-        } catch (error) {
-          console.warn('Admin status check failed:', error);
-          const cachedAdmin = getStoredAdminUser();
-          if (cachedAdmin) {
-            setAdminUser(cachedAdmin);
-            persistAdminSession(cachedAdmin, session.access_token);
-          } else {
-            setAdminUser(null);
-            clearAdminSession();
-          }
-        }
+      // User has a valid Supabase session, check if they're an admin
+      if (session.user.user_metadata?.mustChangePassword === true) {
+        sessionStorage.setItem('mustChangePassword', 'true');
       } else {
-        // Admin token exists, verify it's still valid (including fallback tokens)
-        const isFallbackToken = adminToken.startsWith('fallback-');
-        adminApi.setAdminToken(adminToken);
-        
-        try {
-          if (isFallbackToken) {
-            const fallbackAdmin = buildFallbackSuperAdmin(adminToken);
-            setAdminUser(fallbackAdmin);
-            persistAdminSession(fallbackAdmin, adminToken);
-          } else {
-            const { data: { session } } = await supabase.auth.getSession();
-            
-            if (session) {
-              if (session.user.user_metadata?.mustChangePassword === true) {
-                sessionStorage.setItem('mustChangePassword', 'true');
-              } else {
-                sessionStorage.removeItem('mustChangePassword');
-              }
+        sessionStorage.removeItem('mustChangePassword');
+      }
 
-              const currentAdmin = await adminApi.getCurrentAdminUser();
-              setAdminUser(currentAdmin);
-              persistAdminSession(currentAdmin, session.access_token);
-            }
-          }
-        } catch (error) {
-          console.warn('Error verifying admin token:', error);
-          const { data: { session } } = await supabase.auth.getSession();
-          if (session) {
-            const cachedAdmin = getStoredAdminUser();
-            if (cachedAdmin) {
-              setAdminUser(cachedAdmin);
-              persistAdminSession(cachedAdmin, session.access_token);
-            } else {
-              setAdminUser(null);
-              clearAdminSession();
-            }
-          } else if (isFallbackToken) {
-            const fallbackAdmin = buildFallbackSuperAdmin(adminToken);
-            setAdminUser(fallbackAdmin);
-            persistAdminSession(fallbackAdmin, adminToken);
-          } else {
-            setAdminUser(null);
-            clearAdminSession();
-          }
-        }
+      // Store token
+      adminApi.setAdminToken(session.access_token);
+
+      try {
+        // Verify admin status with the server
+        const currentAdmin = await adminApi.getCurrentAdminUser();
+        setAdminUser(currentAdmin);
+        persistAdminSession(currentAdmin, session.access_token);
+      } catch (error) {
+        console.warn('Admin status check failed:', error);
+        // User is authenticated but not an admin - clear admin session
+        setAdminUser(null);
+        clearAdminSession();
       }
     } catch (error) {
       console.error('Error checking admin status:', error);
       setAdminUser(null);
+      clearAdminSession();
     } finally {
       setIsLoading(false);
     }
