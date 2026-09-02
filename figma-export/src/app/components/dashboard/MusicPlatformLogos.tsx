@@ -253,7 +253,7 @@ export function PlatformLogo({ platform, size = 28 }: { platform: string; size?:
       aria-label={meta.label}
       title={meta.label}
     >
-      {iconifyUrl && !hasImageError ? (
+      {!hasImageError && iconifyUrl ? (
         <img
           src={iconifyUrl}
           alt={meta.label}
