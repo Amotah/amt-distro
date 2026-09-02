@@ -32,22 +32,15 @@ export function extractSmartLinkSlugFromPathname(pathname: string, knownPublicPa
     return null;
   }
 
+  // ONLY treat paths starting with /s/ as smartlinks
+  // SmartLinks must use the explicit /s/ prefix namespace
   if (normalizedPath.startsWith(SMART_LINK_PREFIX)) {
     const slugPart = pathname.slice(pathname.toLowerCase().indexOf(SMART_LINK_PREFIX) + SMART_LINK_PREFIX.length);
     const slug = normalizeSmartLinkSlug(slugPart);
     return slug || null;
   }
 
-  const known = new Set(knownPublicPaths.map((path) => normalizePath(path).toLowerCase()));
-  if (known.has(normalizedPath)) {
-    return null;
-  }
-
-  const segments = normalizedPath.split('/').filter(Boolean);
-  if (segments.length !== 1) {
-    return null;
-  }
-
-  const slug = normalizeSmartLinkSlug(segments[0]);
-  return slug || null;
+  // All other paths are NOT smartlinks
+  // This prevents accidental misidentification of regular pages as smartlinks
+  return null;
 }
