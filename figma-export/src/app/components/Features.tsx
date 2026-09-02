@@ -1,7 +1,7 @@
 import { Globe, DollarSign, BarChart3, Shield, Clock, Headphones, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Card } from './ui/card';
 import { useLanguage } from '../utils/i18n';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 const FEATURE_KEYS = [
   { icon: Globe, titleKey: 'features.f1.title', titleFb: 'Global Distribution', descKey: 'features.f1.desc', descFb: 'Distribute your music to Spotify, Apple Music, Amazon Music, YouTube Music, and 150+ platforms worldwide.' },
@@ -79,7 +79,7 @@ export function Features() {
   const totalSlides = Math.ceil(FEATURE_KEYS.length / itemsPerSlide);
 
   // Auto-scroll carousel every 5 seconds
-  React.useEffect(() => {
+  useEffect(() => {
     if (totalSlides <= 1) return;
     
     const interval = setInterval(() => {
