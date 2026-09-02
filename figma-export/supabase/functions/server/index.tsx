@@ -95,7 +95,7 @@ app.post('/make-server-79198001/init-admin', async (c) => {
       message: 'Admin user initialized',
       credentials: {
         username: 'admin',
-        email: 'admin@amtdistro.com',
+        email: 'admin@amtdistro.com.ng',
         password: 'admin'
       }
     });
