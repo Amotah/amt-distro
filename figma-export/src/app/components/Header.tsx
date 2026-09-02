@@ -33,106 +33,115 @@ export function Header({ onNavigate }: HeaderProps) {
 
   return (
     <header className="premium-header">
-      <div className="premium-header__inner">
-        <div className="flex items-center justify-between h-14 md:h-[3.6rem]">
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* DESKTOP NAVIGATION - Hidden on mobile, shown on lg+ */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      <div className="nav-desktop">
+        <div className="premium-header__inner">
+          <div className="flex items-center justify-between h-14 md:h-[3.6rem]">
+            {/* Left: Logo */}
+            <div className="flex items-center gap-4">
+              <div className="group relative">
+                <a
+                  href="/"
+                  onClick={() => handleNavClick('landing')}
+                  className="premium-header__brand shrink-0"
+                  aria-label="AMT DISTRO - go to home"
+                >
+                  <img src="/brand/amt-distro-wordmark.svg" alt="AMTDISTRO logo" className="premium-header__logo" />
+                </a>
+                <a href="/" className="logo-home-link-chip" onClick={() => handleNavClick('landing')}>
+                  https://amtdistro.com/
+                </a>
+              </div>
+            </div>
 
-          {/* ── Left: Logo ─────────────────────────────────────────────────── */}
-          <div className="flex items-center gap-4">
-            {/* Logo */}
-            <div className="group relative">
-              <a
-                href="/"
-                onClick={() => handleNavClick('landing')}
-                className="premium-header__brand shrink-0"
-                aria-label="AMT DISTRO - go to home"
+            {/* Center: Desktop Navigation Links */}
+            <nav className="premium-header__menu flex items-center gap-1 xl:gap-1">
+              {/* About Dropdown */}
+              <div 
+                className="relative"
+                onMouseEnter={() => setAboutDropdown(true)}
+                onMouseLeave={() => setAboutDropdown(false)}
               >
-                <img src="/brand/amt-distro-wordmark.svg" alt="AMTDISTRO logo" className="premium-header__logo" />
-              </a>
-              <a href="/" className="logo-home-link-chip" onClick={() => handleNavClick('landing')}>
-                https://amtdistro.com/
-              </a>
+                <button className={navLinkClass}>
+                  {t('nav.about', 'About')}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {aboutDropdown && (
+                  <div className="premium-header__dropdown absolute top-full left-0 mt-2 w-48 py-2 z-50">
+                    <button onClick={() => handleNavClick('who-we-are')} className={dropdownItemClass}>
+                      Who We Are
+                    </button>
+                    <button onClick={() => handleNavClick('our-partners')} className={dropdownItemClass}>
+                      Our Partners
+                    </button>
+                    <button onClick={() => handleNavClick('ceo-message')} className={dropdownItemClass}>
+                      Message from CEO
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Solutions Dropdown */}
+              <div 
+                className="relative"
+                onMouseEnter={() => setSolutionsDropdown(true)}
+                onMouseLeave={() => setSolutionsDropdown(false)}
+              >
+                <button className={navLinkClass}>
+                  {t('nav.solutions', 'Solutions')}
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {solutionsDropdown && (
+                  <div className="premium-header__dropdown absolute top-full left-0 mt-2 w-56 py-2 z-50">
+                    <button onClick={() => handleNavClick('technology')} className={dropdownItemClass}>
+                      Technology
+                    </button>
+                    <button onClick={() => handleNavClick('marketing-solutions')} className={dropdownItemClass}>
+                      Marketing
+                    </button>
+                    <button onClick={() => handleNavClick('video-distribution')} className={dropdownItemClass}>
+                      Music Video Distribution
+                    </button>
+                    <button onClick={() => handleNavClick('rights-management')} className={dropdownItemClass}>
+                      Rights Management
+                    </button>
+                    <button onClick={() => handleNavClick('royalty-advances')} className={dropdownItemClass}>
+                      Royalty Advances
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <button onClick={() => handleNavClick('our-partners')} className={navLinkClass}>{t('nav.partners', 'Partners')}</button>
+              <button onClick={() => handleNavClick('lyrics')} className={navLinkClass}>Lyrics</button>
+              <button onClick={() => handleNavClick('promotion')} className={navLinkClass}>{t('nav.promotion', 'Promotion')}</button>
+              <a href="/#pricing" className={navLinkClass}>{t('nav.pricing', 'Pricing')}</a>
+              <a href="/#faq" className={navLinkClass}>{t('nav.faq', 'FAQ')}</a>
+              <button onClick={() => handleNavClick('blog')} className={navLinkClass}>{t('nav.blog', 'Blog')}</button>
+            </nav>
+
+            {/* Right: Auth Buttons */}
+            <div className="premium-header__auth flex items-center gap-2 xl:gap-3">
+              <Button variant="ghost" className="rounded-full font-semibold text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
+              <Button className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] font-semibold text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* ── Center: Desktop Navigation ─────────────────────────────── */}
-          <nav className="premium-header__menu hidden lg:flex items-center gap-1 xl:gap-1">
-            
-            {/* About Dropdown */}
-            <div 
-              className="relative"
-              onMouseEnter={() => setAboutDropdown(true)}
-              onMouseLeave={() => setAboutDropdown(false)}
-            >
-              <button className={navLinkClass}>
-                {t('nav.about', 'About')}
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {aboutDropdown && (
-                <div className="premium-header__dropdown absolute top-full left-0 mt-2 w-48 py-2 z-50">
-                  <button onClick={() => handleNavClick('who-we-are')} className={dropdownItemClass}>
-                    Who We Are
-                  </button>
-                  <button onClick={() => handleNavClick('our-partners')} className={dropdownItemClass}>
-                    Our Partners
-                  </button>
-                  <button onClick={() => handleNavClick('ceo-message')} className={dropdownItemClass}>
-                    Message from CEO
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Solutions Dropdown */}
-            <div 
-              className="relative"
-              onMouseEnter={() => setSolutionsDropdown(true)}
-              onMouseLeave={() => setSolutionsDropdown(false)}
-            >
-              <button className={navLinkClass}>
-                {t('nav.solutions', 'Solutions')}
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                </svg>
-              </button>
-              {solutionsDropdown && (
-                <div className="premium-header__dropdown absolute top-full left-0 mt-2 w-56 py-2 z-50">
-                  <button onClick={() => handleNavClick('technology')} className={dropdownItemClass}>
-                    Technology
-                  </button>
-                  <button onClick={() => handleNavClick('marketing-solutions')} className={dropdownItemClass}>
-                    Marketing
-                  </button>
-                  <button onClick={() => handleNavClick('video-distribution')} className={dropdownItemClass}>
-                    Music Video Distribution
-                  </button>
-                  <button onClick={() => handleNavClick('rights-management')} className={dropdownItemClass}>
-                    Rights Management
-                  </button>
-                  <button onClick={() => handleNavClick('royalty-advances')} className={dropdownItemClass}>
-                    Royalty Advances
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <button onClick={() => handleNavClick('our-partners')} className={navLinkClass}>{t('nav.partners', 'Partners')}</button>
-            <button onClick={() => handleNavClick('lyrics')} className={navLinkClass}>Lyrics</button>
-            <button onClick={() => handleNavClick('promotion')} className={navLinkClass}>{t('nav.promotion', 'Promotion')}</button>
-            <a href="/#pricing" className={navLinkClass}>{t('nav.pricing', 'Pricing')}</a>
-            <a href="/#faq" className={navLinkClass}>{t('nav.faq', 'FAQ')}</a>
-            <button onClick={() => handleNavClick('blog')} className={navLinkClass}>{t('nav.blog', 'Blog')}</button>
-          </nav>
-
-          {/* ── Right: Language + Auth ──────────────────────────────────── */}
-          <div className="premium-header__auth hidden lg:flex items-center gap-2 xl:gap-3">
-            <Button variant="ghost" className="rounded-full font-semibold text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
-            <Button className="rounded-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] font-semibold text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
-          </div>
-
-          {/* ── Mobile right: hamburger ──────────────────────────────────── */}
-          <div className="lg:hidden flex items-center gap-1">
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* MOBILE NAVIGATION - Hidden on desktop, shown on lg- */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      <div className="nav-mobile">
+        <div className="premium-header__inner">
+          <div className="flex items-center justify-between h-14">
+            {/* Left: Hamburger */}
             <button
               className="rounded-xl border border-white/15 bg-white/[0.04] p-2 text-white"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
@@ -140,13 +149,35 @@ export function Header({ onNavigate }: HeaderProps) {
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
+
+            {/* Center: Logo */}
+            <div className="group relative flex-1 flex justify-center">
+              <a
+                href="/"
+                onClick={() => handleNavClick('landing')}
+                className="premium-header__brand shrink-0"
+                aria-label="AMT DISTRO - go to home"
+              >
+                <img src="/brand/amt-distro-wordmark.svg" alt="AMTDISTRO logo" className="premium-header__logo h-[2rem]" />
+              </a>
+            </div>
+
+            {/* Right: Get Started Button */}
+            <Button className="rounded-lg bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black font-semibold text-sm px-3 py-2 h-9 hover:opacity-90" onClick={() => window.location.href = '/get-started'}>
+              {t('nav.getStarted', 'Start')}
+            </Button>
           </div>
         </div>
+      </div>
 
-        {/* Mobile Navigation */}
-        {mobileMenuOpen && (
-          <div className="lg:hidden max-h-[calc(100vh-4rem)] overflow-y-auto py-4 border-t border-white/12 bg-[#0A0A0A]">
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {/* MOBILE DROPDOWN MENU - Hidden by default, shown when hamburger is clicked */}
+      {/* ════════════════════════════════════════════════════════════════════════════ */}
+      {mobileMenuOpen && (
+        <div id="mobileMenu" className="mobile-menu">
+          <div className="max-h-[calc(100vh-4rem)] overflow-y-auto py-4 border-t border-white/12 bg-[#0A0A0A]">
             <nav className="flex flex-col gap-3 px-3">
+              {/* About Dropdown */}
               <div className="rounded-xl border border-white/12 bg-[#101010]">
                 <button
                   className="flex w-full items-center justify-between px-3 py-3 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors font-medium"
@@ -172,6 +203,7 @@ export function Header({ onNavigate }: HeaderProps) {
                 )}
               </div>
 
+              {/* Solutions Dropdown */}
               <div className="rounded-xl border border-white/12 bg-[#101010]">
                 <button
                   className="flex w-full items-center justify-between px-3 py-3 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors font-medium"
@@ -203,6 +235,7 @@ export function Header({ onNavigate }: HeaderProps) {
                 )}
               </div>
 
+              {/* Simple Links */}
               <button
                 className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium"
                 onClick={() => { handleNavClick('our-partners'); }}
@@ -247,14 +280,14 @@ export function Header({ onNavigate }: HeaderProps) {
                 {t('nav.blog', 'Blog')}
               </button>
 
+              {/* Divider and Auth */}
               <div className="border-t border-white/10 pt-4 mt-2 flex flex-col gap-2">
                 <Button variant="ghost" className="rounded-lg w-full text-white hover:text-[#00E5FF] hover:bg-white/5" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
-                <Button className="rounded-lg w-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black font-semibold hover:opacity-90 transition-opacity" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
               </div>
             </nav>
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </header>
   );
 }

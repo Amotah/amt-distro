@@ -14,6 +14,64 @@
     <body>
       <div id="root"></div>
       <script type="module" src="/src/main.tsx"></script>
+
+      <!-- ════════════════════════════════════════════════════════════════════════════ -->
+      <!-- RESPONSIVE NAVBAR HANDLER - Live resize, rotation, and nav switching -->
+      <!-- ════════════════════════════════════════════════════════════════════════════ -->
+      <script>
+        (function () {
+          const desktopNav = document.querySelector('.nav-desktop');
+          const mobileNav  = document.querySelector('.nav-mobile');
+          const mobileMenu = document.getElementById('mobileMenu');
+          const hamburger  = document.querySelector('.hamburger');
+
+          function applyNav() {
+            const w = window.innerWidth;
+
+            if (w >= 768) {
+              desktopNav.style.display = 'flex';
+              mobileNav.style.display  = 'none';
+              if (mobileMenu) mobileMenu.classList.remove('open');
+              if (hamburger)  hamburger.textContent = '☰';
+            } else {
+              desktopNav.style.display = 'none';
+              mobileNav.style.display  = 'flex';
+            }
+          }
+
+          function toggleMenu() {
+            if (!mobileMenu) return;
+            const isOpen = mobileMenu.classList.toggle('open');
+            if (hamburger) hamburger.textContent = isOpen ? '✕' : '☰';
+          }
+
+          // Close menu when any mobile link is clicked
+          document.querySelectorAll('.mobile-menu a').forEach(function (link) {
+            link.addEventListener('click', function () {
+              mobileMenu.classList.remove('open');
+              if (hamburger) hamburger.textContent = '☰';
+            });
+          });
+
+          // Close menu when user clicks outside the nav
+          document.addEventListener('click', function (e) {
+            if (mobileMenu && mobileMenu.classList.contains('open')) {
+              if (!e.target.closest('nav')) {
+                mobileMenu.classList.remove('open');
+                if (hamburger) hamburger.textContent = '☰';
+              }
+            }
+          });
+
+          // Attach hamburger toggle
+          if (hamburger) hamburger.addEventListener('click', toggleMenu);
+
+          // Run on load, resize, and phone rotation
+          window.addEventListener('load', applyNav);
+          window.addEventListener('resize', applyNav);
+          window.addEventListener('orientationchange', applyNav);
+        })();
+      </script>
     </body>
   </html>
   

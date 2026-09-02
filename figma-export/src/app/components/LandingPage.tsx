@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Hero } from './Hero';
-import { Features } from './Features';
 import { HowItWorks } from './HowItWorks';
+import { Features } from './Features';
 import { Pricing } from './Pricing';
-import { CoreCapabilities } from './CoreCapabilities';
 import { ReportingEngine } from './ReportingEngine';
 import { Testimonials } from './Testimonials';
 import { FAQ } from './FAQ';
@@ -66,9 +65,6 @@ export function LandingPage({ onSelectPlan }: LandingPageProps) {
 
       <Hero />
 
-      <RevealSection className="landing-section-shell" delay={90}>
-        <Features />
-      </RevealSection>
       <RevealSection className="landing-section-shell" delay={120}>
         <HowItWorks />
       </RevealSection>
@@ -76,7 +72,7 @@ export function LandingPage({ onSelectPlan }: LandingPageProps) {
         <Pricing onSelectPlan={onSelectPlan} />
       </RevealSection>
       <RevealSection className="landing-section-shell" delay={180}>
-        <CoreCapabilities />
+        <Features />
       </RevealSection>
       <RevealSection className="landing-section-shell" delay={195}>
         <ReportingEngine />

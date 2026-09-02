@@ -938,6 +938,72 @@ textarea {
   transform: translateY(0);
 }
 
+/* ════════════════════════════════════════════════════════════════════════════ */
+/* NAVIGATION STRUCTURE - Desktop vs Mobile via CSS media queries */
+/* ════════════════════════════════════════════════════════════════════════════ */
+
+.nav-desktop {
+  display: none; /* Hidden by default, shown on lg+ */
+}
+
+.nav-mobile {
+  display: none; /* Hidden by default, shown on lg- */
+}
+
+.mobile-menu {
+  display: block; /* Visible when #mobileMenu div exists (controlled by React) */
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   COMPREHENSIVE RESPONSIVE BREAKPOINT SYSTEM
+   ──────────────────────────────────────────────────────────────────────────── */
+
+/* ── Small phones: 320px to 480px ── */
+@media (max-width: 480px) {
+  .nav-desktop { display: none !important; }
+  .nav-mobile  { display: flex !important; }
+  .nav-mobile  { padding: 0 1rem; height: 52px; }
+  .logo-text   { font-size: 0.85rem; }
+  .btn-started { font-size: 0.72rem; padding: 6px 10px; }
+}
+
+/* ── Large phones: 481px to 767px ── */
+@media (min-width: 481px) and (max-width: 767px) {
+  .nav-desktop { display: none !important; }
+  .nav-mobile  { display: flex !important; }
+  .nav-mobile  { padding: 0 1.5rem; height: 56px; }
+}
+
+/* ── Tablets: 768px to 1024px ── */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .nav-desktop { display: flex !important; }
+  .nav-mobile  { display: none !important; }
+  .mobile-menu { display: none !important; }
+  .nav-links   { gap: 0.9rem; }
+  .nav-links a { font-size: 0.78rem; }
+  .btn-started { padding: 6px 12px; font-size: 0.78rem; }
+  .lang-select { display: none; }
+}
+
+/* ── Laptops: 1025px to 1440px ── */
+@media (min-width: 1025px) and (max-width: 1440px) {
+  .nav-desktop { display: flex !important; }
+  .nav-mobile  { display: none !important; }
+  .mobile-menu { display: none !important; }
+  .nav-links   { gap: 1.5rem; }
+  .nav-links a { font-size: 0.875rem; }
+}
+
+/* ── Large desktops and 4K: 1441px and above ── */
+@media (min-width: 1441px) {
+  .nav-desktop { display: flex !important; }
+  .nav-mobile  { display: none !important; }
+  .mobile-menu { display: none !important; }
+  nav          { max-width: 1800px; margin: 0 auto; }
+  .nav-links a { font-size: 1rem; }
+  .btn-started { padding: 10px 24px; font-size: 0.95rem; }
+}
+
 @media (max-width: 900px) {
   .landing-proof-panel__header {
     align-items: start;
