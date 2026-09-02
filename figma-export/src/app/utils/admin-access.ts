@@ -20,6 +20,7 @@ const ADMIN_ROUTE_ACCESS_RULES: AdminAccessRule[] = [
   { path: '/admin/artist-label', exact: true, departments: ['content', 'operations', 'admin'], permission: 'users.view' },
   { path: '/admin/user-activity', exact: true, departments: ['operations', 'admin'], permission: 'users.view' },
   { path: '/admin/releases', exact: true, departments: ['content', 'admin'], permission: 'releases.view' },
+  { path: '/admin/lyrics', exact: true, departments: ['content', 'admin'], permission: 'releases.view' },
   { path: '/admin/track-upload', exact: true, departments: ['content', 'admin'], permission: 'releases.edit' },
   { path: '/admin/content-moderation', exact: true, departments: ['content', 'admin'], permission: 'releases.approve' },
   { path: '/admin/content-moderation-panel', exact: true, departments: ['content', 'admin'], permission: 'releases.approve' },

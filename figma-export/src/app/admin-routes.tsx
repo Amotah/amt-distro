@@ -8,6 +8,7 @@ import { AdminLayout } from './components/admin/AdminLayout';
 const AdminDashboard = lazy(() => import('./components/admin/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const UserManagement = lazy(() => import('./components/admin/UserManagement').then((module) => ({ default: module.UserManagement })));
 const ReleaseManagement = lazy(() => import('./components/admin/ReleaseManagement').then((module) => ({ default: module.ReleaseManagement })));
+const AdminLyrics = lazy(() => import('./components/admin/AdminLyrics').then((module) => ({ default: module.AdminLyrics })));
 const ContentModeration = lazy(() => import('./components/admin/ContentModeration').then((module) => ({ default: module.ContentModeration })));
 const Analytics = lazy(() => import('./components/admin/Analytics').then((module) => ({ default: module.Analytics })));
 const RoyaltyManagement = lazy(() => import('./components/admin/RoyaltyManagement').then((module) => ({ default: module.RoyaltyManagement })));
@@ -131,6 +132,10 @@ export const createAdminRouter = () => {
         {
           path: 'releases',
           element: withSuspense(<ReleaseManagement />),
+        },
+        {
+          path: 'lyrics',
+          element: withSuspense(<AdminLyrics />),
         },
         {
           path: 'track-upload',
