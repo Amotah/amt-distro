@@ -46,18 +46,18 @@ export function OurPartners() {
                   key={partner.name}
                   type="button"
                   onClick={() => setActivePartner(partner)}
-                  className={`rounded-3xl border p-4 text-left transition duration-200 ${
+                  className={`group rounded-3xl border p-4 text-left transition duration-200 ${
                     activePartner.name === partner.name
                       ? 'border-[#FF6B00] bg-[#1A1410]'
-                      : 'border-white/10 bg-[#111111] hover:border-[#FF6B00]/30 hover:bg-[#161616]'
+                      : 'border-white/10 bg-[#111111] hover:border-[#FF6B00]/50 hover:bg-[#161616] hover:shadow-[0_0_28px_rgba(255,107,0,0.18)]'
                   }`}
                 >
                   <div className="flex items-center gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0A0A0A]">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#0A0A0A] transition duration-200 group-hover:shadow-[0_0_22px_rgba(255,107,0,0.42)] group-hover:ring-1 group-hover:ring-[#FFD600]/40">
                       <img
                         src={getLogoSrc(partner.domain)}
                         alt={`${partner.name} logo`}
-                        className="h-8 w-8 object-contain"
+                        className="h-8 w-8 object-contain transition duration-200 group-hover:scale-110"
                         loading="lazy"
                         referrerPolicy="no-referrer"
                       />
