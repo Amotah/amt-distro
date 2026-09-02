@@ -78,6 +78,17 @@ export function Features() {
   const itemsPerSlide = 3;
   const totalSlides = Math.ceil(FEATURE_KEYS.length / itemsPerSlide);
 
+  // Auto-scroll carousel every 5 seconds
+  React.useEffect(() => {
+    if (totalSlides <= 1) return;
+    
+    const interval = setInterval(() => {
+      setCurrentIndex((prev) => (prev + 1) % totalSlides);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [totalSlides]);
+
   const handlePrevSlide = () => {
     setCurrentIndex((prev) => (prev - 1 + totalSlides) % totalSlides);
   };
@@ -131,9 +142,8 @@ export function Features() {
                   <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-[#FF6B00] to-[#FFD600] shadow-[0_12px_30px_rgba(255,107,0,0.18)]">
                     <Icon className="h-5 w-5 text-white" />
                   </div>
-                  <h3 className="mb-3 text-base font-bold text-white">{t(feature.titleKey, feature.titleFb)}</h3>
-                  <p className="text-sm leading-6 text-[#B3B3B3]">{t(feature.descKey, feature.descFb)}</p>
-                  <p className="text-xs text-[#FF6B00] mt-4 font-semibold">Click for more details →</p>
+                  <h3 className="mb-4 text-base font-bold text-white">{t(feature.titleKey, feature.titleFb)}</h3>
+                  <p className="text-xs text-[#FF6B00] font-semibold">Click for more details →</p>
                 </Card>
               );
             })}
