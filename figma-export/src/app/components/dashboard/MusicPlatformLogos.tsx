@@ -1,26 +1,65 @@
 import { useState } from 'react';
 
+declare global {
+  interface ImportMeta {
+    glob: (
+      pattern: string,
+      options?: { eager?: boolean; import?: string; query?: string },
+    ) => Record<string, string>;
+  }
+}
+
 type BrandConfig = {
   label: string;
   surfaceClassName: string;
   logoUrl?: string;
+  localLogoUrl?: string;
   imagePaddingClassName?: string;
   monogram?: string;
   monogramClassName?: string;
 };
 
-// Build Iconify Simple Icons URL for brand logos
+const LOCAL_LOGOS = import.meta.glob('/Logos/*.{svg,png,jpg,jpeg,webp}', {
+  eager: true,
+  import: 'default',
+  query: '?url',
+}) as Record<string, string>;
+
+const LOCAL_LOGO_FILES: Record<string, string> = {
+  spotify: 'logos--spotify.svg',
+  apple: 'selfhst--apple-music.svg',
+  apple_music: 'selfhst--apple-music.svg',
+  audiomack: 'thesvg-color--audiomack.svg',
+  boomplay: 'arcticons--boomplay.svg',
+  youtube: 'logos--youtube.svg',
+  youtube_music: 'thesvg-color--youtube-music.svg',
+  youtubemusic: 'thesvg-color--youtube-music.svg',
+  deezer: 'selfhst--deezer.svg',
+  tidal: 'logos--tidal.svg',
+  amazon: 'thesvg-color--amazon-music.svg',
+  amazon_music: 'thesvg-color--amazon-music.svg',
+  amazonmusic: 'thesvg-color--amazon-music.svg',
+  soundcloud: 'logos--soundcloud.svg',
+  pandora: 'thesvg-color--pandora.svg',
+  napster: 'fa-brands--napster.svg',
+  anghami: 'arcticons--anghami.svg',
+  instagram: 'skill-icons--instagram.svg',
+  facebook: 'devicon--facebook.svg',
+  tiktok: 'logos--tiktok.svg',
+  jiosaavn: 'arcticons--jiosaavn.svg',
+  tencent_music_qq_music: 'thesvg-color--tencent.svg',
+  netease_cloud_music: 'thesvg-color--netease-cloud-music.svg',
+  itunes_store: 'thesvg-color--itunes.svg',
+  awa_music: 'arcticons--awa.svg',
+};
+
+function getLocalLogoUrl(platformKey: string) {
+  const fileName = LOCAL_LOGO_FILES[platformKey];
+  return fileName ? LOCAL_LOGOS[`/Logos/${fileName}`] : undefined;
+}
+
 function buildIconifyLogoUrl(iconName: string, size = 96) {
   return `https://api.iconify.design/simple-icons/${iconName}.svg?height=${size}`;
-}
-
-// Fallback to old method if needed
-function buildLocalLogoUrl(fileName: string) {
-  return `/platform-logos/${fileName}`;
-}
-
-function buildLogoUrl(domain: string, size = 96) {
-  return `https://img.logo.dev/${domain}?size=${size}`;
 }
 
 const PLATFORM_LOGOS: Record<string, BrandConfig> = {
@@ -200,12 +239,15 @@ function normalizePlatformKey(platform: string) {
 
 function getPlatformMeta(platform: string) {
   const normalized = normalizePlatformKey(platform);
-  return PLATFORM_LOGOS[normalized] || {
+  const meta = PLATFORM_LOGOS[normalized] || {
     surfaceClassName: 'border-white/10 bg-[#161616]/5',
     label: platform,
+    logoUrl: buildIconifyLogoUrl(normalized),
     monogram: platform.slice(0, 1).toUpperCase(),
     monogramClassName: 'text-white/80',
   };
+
+  return { ...meta, localLogoUrl: getLocalLogoUrl(normalized) };
 }
 
 function getTileSizeClass(size: number) {
@@ -240,12 +282,12 @@ export function PlatformLogo({ platform, size = 28 }: { platform: string; size?:
   const tileSizeClass = getTileSizeClass(size);
   const imageSizeClass = getImageSizeClass(size);
   const monogramClass = getMonogramClass(size);
-  const [hasImageError, setHasImageError] = useState(false);
+  const [imageSource, setImageSource] = useState<'local' | 'iconify'>(meta.localLogoUrl ? 'local' : 'iconify');
 
-  // Construct Iconify URL with proper sizing
-  const iconifyUrl = meta.logoUrl?.includes('iconify') 
+  const iconifyUrl = meta.logoUrl?.includes('iconify')
     ? `${meta.logoUrl}${meta.logoUrl.includes('?') ? '&' : '?'}width=${size}&height=${size}`
     : meta.logoUrl;
+  const imageUrl = imageSource === 'local' ? meta.localLogoUrl : iconifyUrl;
 
   return (
     <div
@@ -253,13 +295,13 @@ export function PlatformLogo({ platform, size = 28 }: { platform: string; size?:
       aria-label={meta.label}
       title={meta.label}
     >
-      {!hasImageError && iconifyUrl ? (
+      {imageUrl ? (
         <img
-          src={iconifyUrl}
+          src={imageUrl}
           alt={meta.label}
           className={`${imageSizeClass} object-contain ${meta.imagePaddingClassName || ''}`}
           loading="lazy"
-          onError={() => setHasImageError(true)}
+          onError={() => setImageSource('iconify')}
         />
       ) : (
         <span className={`font-black uppercase tracking-tight ${monogramClass} ${meta.monogramClassName || 'text-white/80'}`}>
