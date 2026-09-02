@@ -145,103 +145,111 @@ export function Header({ onNavigate }: HeaderProps) {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <div className="lg:hidden py-4 border-t border-white/12">
-            <nav className="flex flex-col gap-4">
+          <div className="lg:hidden max-h-[calc(100vh-4rem)] overflow-y-auto py-4 border-t border-white/12 bg-[#0A0A0A]">
+            <nav className="flex flex-col gap-3 px-3">
               <div className="rounded-xl border border-white/12 bg-[#101010]">
                 <button
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
+                  className="flex w-full items-center justify-between px-3 py-3 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors font-medium"
                   onClick={() => setMobileAboutOpen((prev) => !prev)}
                 >
                   <span>{t('nav.about', 'About')}</span>
-                  <svg className={`h-4 w-4 transition-transform ${mobileAboutOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`h-4 w-4 transition-transform flex-shrink-0 ${mobileAboutOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 {mobileAboutOpen && (
-                  <div className="border-t border-white/10 px-2 py-2">
-                    <button onClick={() => handleNavClick('who-we-are')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                  <div className="border-t border-white/10 px-2 py-2 bg-[#0A0A0A]">
+                    <button onClick={() => handleNavClick('who-we-are')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Who We Are
                     </button>
-                    <button onClick={() => handleNavClick('our-partners')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('our-partners')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Our Partners
                     </button>
-                    <button onClick={() => handleNavClick('ceo-message')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('ceo-message')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Message from CEO
                     </button>
                   </div>
                 )}
               </div>
+
               <div className="rounded-xl border border-white/12 bg-[#101010]">
                 <button
-                  className="flex w-full items-center justify-between px-3 py-2 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
+                  className="flex w-full items-center justify-between px-3 py-3 text-left text-[#B3B3B3] hover:text-[#00E5FF] transition-colors font-medium"
                   onClick={() => setMobileSolutionsOpen((prev) => !prev)}
                 >
                   <span>{t('nav.solutions', 'Solutions')}</span>
-                  <svg className={`h-4 w-4 transition-transform ${mobileSolutionsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className={`h-4 w-4 transition-transform flex-shrink-0 ${mobileSolutionsOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 {mobileSolutionsOpen && (
-                  <div className="border-t border-white/10 px-2 py-2">
-                    <button onClick={() => handleNavClick('technology')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                  <div className="border-t border-white/10 px-2 py-2 bg-[#0A0A0A]">
+                    <button onClick={() => handleNavClick('technology')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Technology
                     </button>
-                    <button onClick={() => handleNavClick('marketing-solutions')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('marketing-solutions')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Marketing
                     </button>
-                    <button onClick={() => handleNavClick('video-distribution')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('video-distribution')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Music Video Distribution
                     </button>
-                    <button onClick={() => handleNavClick('rights-management')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('rights-management')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Rights Management
                     </button>
-                    <button onClick={() => handleNavClick('royalty-advances')} className="block w-full rounded-md px-2 py-2 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white">
+                    <button onClick={() => handleNavClick('royalty-advances')} className="block w-full rounded-md px-3 py-2.5 text-left text-sm text-[#B3B3B3] hover:bg-white/10 hover:text-white transition-colors">
                       Royalty Advances
                     </button>
                   </div>
                 )}
               </div>
-              <a
-                href="/#pricing"
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {t('nav.pricing', 'Pricing')}
-              </a>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium"
                 onClick={() => { handleNavClick('our-partners'); }}
               >
                 {t('nav.partners', 'Partners')}
               </button>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium"
                 onClick={() => { handleNavClick('lyrics'); }}
               >
                 Lyrics
               </button>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium"
                 onClick={() => { handleNavClick('promotion'); }}
               >
                 {t('nav.promotion', 'Promotion')}
               </button>
+
+              <a
+                href="/#pricing"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium block"
+                onClick={() => setMobileMenuOpen(false)}
+              >
+                {t('nav.pricing', 'Pricing')}
+              </a>
+
               <a
                 href="/#faq"
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium block"
                 onClick={() => setMobileMenuOpen(false)}
               >
                 {t('nav.faq', 'FAQ')}
               </a>
+
               <button
-                className="text-[#B3B3B3] hover:text-[#00E5FF] transition-colors text-left"
+                className="rounded-lg px-3 py-3 text-left text-sm text-[#B3B3B3] hover:text-[#00E5FF] hover:bg-white/5 transition-colors font-medium"
                 onClick={() => { handleNavClick('blog'); }}
               >
                 {t('nav.blog', 'Blog')}
               </button>
-              <div className="flex flex-col gap-2 pt-2">
-                <Button variant="ghost" className="text-white hover:text-[#00E5FF]" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
-                <Button className="bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black hover:opacity-90" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
+
+              <div className="border-t border-white/10 pt-4 mt-2 flex flex-col gap-2">
+                <Button variant="ghost" className="rounded-lg w-full text-white hover:text-[#00E5FF] hover:bg-white/5" onClick={() => window.location.href = '/login'}>{t('nav.signIn', 'Sign In')}</Button>
+                <Button className="rounded-lg w-full bg-gradient-to-r from-[#FF6B00] to-[#FFD600] text-black font-semibold hover:opacity-90 transition-opacity" onClick={() => window.location.href = '/get-started'}>{t('nav.getStarted', 'Get Started')}</Button>
               </div>
             </nav>
           </div>
